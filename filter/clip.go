@@ -213,7 +213,7 @@ func (f *clipFilter) updateSamples(tnum int, t *mp4.TrakBox) {
 		stss.SampleNumber = []uint32{}
 		for _, n := range oldNumber {
 			if n >= firstSample && n <= lastSample {
-				stss.SampleNumber = append(stss.SampleNumber, n-uint32(firstSample))
+				stss.SampleNumber = append(stss.SampleNumber, n-uint32(firstSample)+1)
 			}
 		}
 	}
