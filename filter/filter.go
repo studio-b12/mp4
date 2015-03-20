@@ -27,5 +27,13 @@ func EncodeFiltered(w io.Writer, m *mp4.MP4, f Filter) error {
 	if err != nil {
 		return err
 	}
+	for _, b := range m.Boxes() {
+		if b.Type() != "ftyp" && b.Type() != "moov" && b.Type() != "mdat" {
+			err = b.Encode(w)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	return f.FilterMdat(w, m.Mdat)
 }

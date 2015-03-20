@@ -26,10 +26,10 @@ func main() {
 		if err != nil {
 			fmt.Println(err)
 		}
-		if *start > 0 {
+		if *duration > 0 {
 			filter.EncodeFiltered(fd, v, filter.Clip(*start, *duration))
 		} else {
-			filter.EncodeFiltered(fd, v, filter.Noop())
+			v.Encode(fd)
 		}
 	}
 }

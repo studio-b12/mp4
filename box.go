@@ -49,6 +49,7 @@ func init() {
 		"stss": DecodeStss,
 		"meta": DecodeMeta,
 		"mdat": DecodeMdat,
+		"free": DecodeFree,
 	}
 }
 
@@ -83,6 +84,7 @@ func EncodeHeader(b Box, w io.Writer) error {
 type Box interface {
 	Type() string
 	Size() int
+	Encode(w io.Writer) error
 }
 
 type BoxDecoder func(r io.Reader) (Box, error)
