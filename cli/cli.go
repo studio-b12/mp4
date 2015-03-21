@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/jfbus/mp4"
 	"github.com/jfbus/mp4/filter"
@@ -27,7 +28,7 @@ func main() {
 			fmt.Println(err)
 		}
 		if *duration > 0 {
-			filter.EncodeFiltered(fd, v, filter.Clip(*start, *duration))
+			filter.EncodeFiltered(fd, v, filter.Clip(time.Duration(*start).Time.Second, time.Duration(*duration)*time.Second))
 		} else {
 			v.Encode(fd)
 		}
