@@ -28,7 +28,7 @@ func main() {
 			fmt.Println(err)
 		}
 		if *duration > 0 {
-			filter.EncodeFiltered(fd, v, filter.Clip(time.Duration(*start).Time.Second, time.Duration(*duration)*time.Second))
+			filter.EncodeFiltered(fd, v, filter.Clip(time.Duration(*start)*time.Second, time.Duration(*duration)*time.Second))
 		} else {
 			v.Encode(fd)
 		}
