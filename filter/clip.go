@@ -355,6 +355,7 @@ func (f *clipFilter) FilterMdat(w io.Writer, m *mp4.MdatBox) error {
 	buffer := make([]byte, bufSize)
 	for _, c := range f.chunks {
 		s := c.size()
+		// TODO : Skip if the reader supports it
 		n, err := io.ReadFull(m.Reader(), buffer[:s])
 		if err != nil {
 			return err

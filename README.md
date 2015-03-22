@@ -11,9 +11,24 @@ For the complete MP4 specifications, see http://standards.iso.org/ittf/PubliclyA
 
 See http://godoc.org/github.com/jfbus/mp4 and http://godoc.org/github.com/jfbus/mp4/filter
 
-## Usage
+## CLI
 
-See cli/cli.go for examples.
+A CLI can be found in cli/mp4tool.go
+
+It can :
+
+* Display info about a media
+```
+mp4tool info file.mp4
+```
+* Copy a video (decode it and reencode it to another file, useful for debugging)
+```
+mp4tool copy in.mp4 out.mp4
+```
+* Generate a clip
+```
+mp4tool clip --start 10 --duration 30 in.mp4 out.mp4
+```
 
 ## LICENSE
 
