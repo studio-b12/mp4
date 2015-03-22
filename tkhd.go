@@ -9,7 +9,7 @@ import (
 
 // Track Header Box (tkhd - mandatory)
 //
-// Status : vonly ersion 0 is decoded. version 1 is not supported
+// Status : only version 0 is decoded. version 1 is not supported
 //
 // This box describes the track. Duration is measured in time units (according to the time scale
 // defined in the movie header box).
