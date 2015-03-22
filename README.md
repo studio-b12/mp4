@@ -3,7 +3,7 @@
 
 [![wercker status](https://app.wercker.com/status/880648789317885e754d7054fa026b56/s/master "wercker status")](https://app.wercker.com/project/bykey/880648789317885e754d7054fa026b56)
 
-A encoder/decoder class, io.Reader and io.Writer compatible, with skip support
+A encoder/decoder class, io.Reader and io.Writer compatible, usable for HTTP pseudo streaming ()
 
 For the complete MP4 specifications, see http://standards.iso.org/ittf/PubliclyAvailableStandards/c061988_ISO_IEC_14496-12_2012.zip and http://standards.iso.org/ittf/PubliclyAvailableStandards/c061989_ISO_IEC_15444-12_2012.zip
 
@@ -29,6 +29,8 @@ mp4tool copy in.mp4 out.mp4
 ```
 mp4tool clip --start 10 --duration 30 in.mp4 out.mp4
 ```
+
+(if you really want to generate a clip, you should use ffmpeg, you will ge better results)
 
 ## LICENSE
 
