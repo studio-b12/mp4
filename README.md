@@ -11,6 +11,11 @@ For the complete MP4 specifications, see http://standards.iso.org/ittf/PubliclyA
 
 See http://godoc.org/github.com/jfbus/mp4 and http://godoc.org/github.com/jfbus/mp4/filter
 
+## Warning
+
+Some boxes can have multiple formats (ctts, elst, tkhd, ...). Only the version 0 of those boxes in currently decoded.
+Version 1 will be supported, and this will break a few things (e.g. some uint32 attributes will be transformed into uint64).
+
 ## CLI
 
 A CLI can be found in cli/mp4tool.go
