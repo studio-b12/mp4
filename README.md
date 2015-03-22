@@ -13,8 +13,8 @@ See http://godoc.org/github.com/jfbus/mp4 and http://godoc.org/github.com/jfbus/
 
 ## Warning
 
-Some boxes can have multiple formats (ctts, elst, tkhd, ...). Only the version 0 of those boxes in currently decoded.
-Version 1 will be supported, and this will break a few things (e.g. some uint32 attributes will be transformed into uint64).
+Some boxes can have multiple formats (ctts, elst, tkhd, ...). Only the version 0 of those boxes is currently decoded (see #7).
+Version 1 will be supported, and this will break a few things (e.g. some uint32 attributes will switch to uint64).
 
 ## CLI
 
