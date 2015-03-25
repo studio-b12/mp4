@@ -15,6 +15,10 @@ type MdatBox struct {
 }
 
 func DecodeMdat(r io.Reader) (Box, error) {
+	// r is a LimitedReader
+	if lr, limited := r.(*io.LimitedReader); limited {
+		r = lr.R
+	}
 	return &MdatBox{r: r}, nil
 }
 
