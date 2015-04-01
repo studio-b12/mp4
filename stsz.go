@@ -62,6 +62,7 @@ func (b *StszBox) Dump() {
 	}
 }
 
+// GetSampleSize returns the size (in bytes) of a sample
 func (b *StszBox) GetSampleSize(i int) uint32 {
 	if i > len(b.SampleSize) {
 		return b.SampleUniformSize

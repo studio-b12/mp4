@@ -54,6 +54,8 @@ func (b *SttsBox) Size() int {
 	return BoxHeaderSize + 8 + len(b.SampleCount)*8
 }
 
+// GetTimeCode returns the timecode (duration since the beginning of the media)
+// of the beginning of a sample
 func (b *SttsBox) GetTimeCode(sample, timescale uint32) time.Duration {
 	sample--
 	var units uint32

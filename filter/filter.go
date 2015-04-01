@@ -13,7 +13,7 @@ type Filter interface {
 	FilterMdat(w io.Writer, m *mp4.MdatBox) error
 }
 
-// Encode media to a writer, filtering the media using the specified filter
+// EncodeFiltered encodes a media to a writer, filtering the media using the specified filter
 func EncodeFiltered(w io.Writer, m *mp4.MP4, f Filter) error {
 	err := m.Ftyp.Encode(w)
 	if err != nil {

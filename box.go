@@ -53,12 +53,13 @@ func init() {
 	}
 }
 
+// The header of a box
 type BoxHeader struct {
 	Type string
 	Size uint32
 }
 
-// Decode a box header (size + box type)
+// DecodeHeader decodes a box header (size + box type)
 func DecodeHeader(r io.Reader) (BoxHeader, error) {
 	buf := make([]byte, BoxHeaderSize)
 	n, err := r.Read(buf)
@@ -71,7 +72,7 @@ func DecodeHeader(r io.Reader) (BoxHeader, error) {
 	return BoxHeader{string(buf[4:8]), binary.BigEndian.Uint32(buf[0:4])}, nil
 }
 
-// Encode a box header
+// EncodeHeader encodes a box header to a writer
 func EncodeHeader(b Box, w io.Writer) error {
 	buf := make([]byte, BoxHeaderSize)
 	binary.BigEndian.PutUint32(buf, uint32(b.Size()))
@@ -89,7 +90,7 @@ type Box interface {
 
 type BoxDecoder func(r io.Reader) (Box, error)
 
-// Decode a box
+// DecodeBox decodes a box
 func DecodeBox(h BoxHeader, r io.Reader) (Box, error) {
 	d := decoders[h.Type]
 	if d == nil {
@@ -104,7 +105,7 @@ func DecodeBox(h BoxHeader, r io.Reader) (Box, error) {
 	return b, nil
 }
 
-// Decode a container box
+// DecodeContainer decodes a container box
 func DecodeContainer(r io.Reader) ([]Box, error) {
 	l := []Box{}
 	for {

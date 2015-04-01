@@ -8,7 +8,7 @@ import (
 
 type noopFilter struct{}
 
-// Noop() returns a filter that does nothing
+// Noop returns a filter that does nothing
 func Noop() Filter {
 	return &noopFilter{}
 }

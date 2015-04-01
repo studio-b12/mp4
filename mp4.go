@@ -2,7 +2,7 @@ package mp4
 
 import "io"
 
-// A MPEG-4 content
+// A MPEG-4 media
 //
 // A MPEG-4 media contains three main boxes :
 //
@@ -18,6 +18,7 @@ type MP4 struct {
 	boxes []Box
 }
 
+// Decode decodes a media from a Reader
 func Decode(r io.Reader) (*MP4, error) {
 	v := &MP4{
 		boxes: []Box{},
@@ -47,15 +48,18 @@ LoopBoxes:
 	return v, nil
 }
 
+// Dump displays some information about a media
 func (m *MP4) Dump() {
 	m.Ftyp.Dump()
 	m.Moov.Dump()
 }
 
+// Boxes lists the top-level boxes from a media
 func (m *MP4) Boxes() []Box {
 	return m.boxes
 }
 
+// Encode encodes a media to a Writer
 func (m *MP4) Encode(w io.Writer) error {
 	err := m.Ftyp.Encode(w)
 	if err != nil {
