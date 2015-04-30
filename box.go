@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 )
 
 const (
@@ -94,12 +93,10 @@ type BoxDecoder func(r io.Reader) (Box, error)
 func DecodeBox(h BoxHeader, r io.Reader) (Box, error) {
 	d := decoders[h.Type]
 	if d == nil {
-		log.Printf("Error while decoding %s : unknown box type", h.Type)
 		return nil, ErrUnknownBoxType
 	}
 	b, err := d(io.LimitReader(r, int64(h.Size-BoxHeaderSize)))
 	if err != nil {
-		log.Printf("Error while decoding %s : %s", h.Type, err)
 		return nil, err
 	}
 	return b, nil
