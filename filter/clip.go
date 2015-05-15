@@ -95,8 +95,6 @@ type clipFilter struct {
 type ClipInterface interface {
 	Filter
 	io.ReadSeeker
-
-	Prepare() error
 }
 
 // Clip returns a filter that extracts a clip between begin and begin + duration (in seconds, starting at 0)
@@ -231,7 +229,7 @@ func (f *clipFilter) Read(buf []byte) (n int, err error) {
 	return
 }
 
-func (f *clipFilter) Filter() error {
+func (f *clipFilter) Filter() (err error) {
 	m := f.m.Moov
 	oldSize := m.Size()
 	f.chunks = []*chunk{}
@@ -251,10 +249,6 @@ func (f *clipFilter) Filter() error {
 	f.deltaOff = oldSize - m.Size()
 	f.m.Mdat.ContentSize = f.updateChunkOffsets(m)
 
-	return nil
-}
-
-func (f *clipFilter) Prepare() (err error) {
 	buffer := make([]byte, 0)
 	Buffer := bytes.NewBuffer(buffer)
 
@@ -489,37 +483,15 @@ func (f *clipFilter) updateDurations(m *mp4.MoovBox) {
 }
 
 func (f *clipFilter) WriteTo(w io.Writer) (n int64, err error) {
-	m := f.m.Mdat
+	var nn int
+	var nnn int64
 
-	if err = f.m.Ftyp.Encode(w); err != nil {
-		return
-	} else {
-		n += int64(f.m.Ftyp.Size())
-	}
-
-	if err = f.m.Moov.Encode(w); err != nil {
-		return
-	} else {
-		n += int64(f.m.Moov.Size())
-	}
-
-	for _, b := range f.m.Boxes() {
-		if err = b.Encode(w); err != nil {
-			return
-		} else {
-			n += int64(b.Size())
-		}
-	}
-
-	if err = mp4.EncodeHeader(m, w); err != nil {
+	if nn, err = w.Write(f.buffer); err != nil {
 		return
 	}
 
-	n += mp4.BoxHeaderSize
-
-	var nn int64
-
-	r := m.Reader()
+	n += int64(nn)
+	r := f.m.Mdat.Reader()
 	s, seekable := r.(io.Seeker)
 
 	for _, c := range f.chunks {
@@ -536,11 +508,11 @@ func (f *clipFilter) WriteTo(w io.Writer) (n int64, err error) {
 			continue
 		}
 
-		if nn, err = io.CopyN(w, r, csize); err != nil {
+		if nnn, err = io.CopyN(w, r, csize); err != nil {
 			return
 		}
 
-		if nn != csize {
+		if nnn != csize {
 			if err == nil {
 				err = ErrTruncatedChunk
 			}
