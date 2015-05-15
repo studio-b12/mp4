@@ -1,6 +1,9 @@
 package mp4
 
-import "io"
+import (
+	"io"
+	"time"
+)
 
 // A MPEG-4 media
 //
@@ -33,7 +36,6 @@ LoopBoxes:
 		if err != nil {
 			return nil, err
 		}
-		v.boxes = append(v.boxes, box)
 		switch h.Type {
 		case "ftyp":
 			v.Ftyp = box.(*FtypBox)
@@ -43,6 +45,8 @@ LoopBoxes:
 			v.Mdat = box.(*MdatBox)
 			v.Mdat.ContentSize = h.Size - BoxHeaderSize
 			break LoopBoxes
+		default:
+			v.boxes = append(v.boxes, box)
 		}
 	}
 	return v, nil
@@ -70,12 +74,30 @@ func (m *MP4) Encode(w io.Writer) error {
 		return err
 	}
 	for _, b := range m.boxes {
-		if b.Type() != "ftyp" && b.Type() != "moov" {
-			err = b.Encode(w)
-			if err != nil {
-				return err
-			}
+		err = b.Encode(w)
+		if err != nil {
+			return err
 		}
 	}
+	err = m.Mdat.Encode(w)
+	if err != nil {
+		return err
+	}
 	return nil
+}
+
+func (m *MP4) Size() (size int) {
+	size += m.Ftyp.Size()
+	size += m.Moov.Size()
+	size += m.Mdat.Size()
+
+	for _, b := range m.Boxes() {
+		size += b.Size()
+	}
+
+	return
+}
+
+func (m *MP4) Duration() time.Duration {
+	return time.Second * time.Duration(m.Moov.Mvhd.Duration) / time.Duration(m.Moov.Mvhd.Timescale)
 }
