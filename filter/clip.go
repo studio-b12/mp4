@@ -1,10 +1,12 @@
 package filter
 
 import (
+	"bytes"
 	"errors"
 	"io"
-	"log"
+	"os"
 	"sort"
+	"syscall"
 	"time"
 
 	"github.com/jfbus/mp4"
@@ -62,7 +64,11 @@ func (m mdat) firstSample(tnum int, timecode time.Duration) uint32 {
 	return 0
 }
 
-func (m mdat) lastSample(tnum int, timecode time.Duration) uint32 {
+func (m mdat) lastSample(tnum int, timecode time.Duration) (lastsample uint32) {
+	if len(m) == 0 {
+		return 0
+	}
+
 	for _, c := range m {
 		if c.track != tnum {
 			continue
@@ -70,37 +76,163 @@ func (m mdat) lastSample(tnum int, timecode time.Duration) uint32 {
 		if timecode >= c.firstTC && timecode < c.lastTC {
 			return c.lastSample
 		}
+		lastsample = c.lastSample
 	}
-	return 0
+
+	return
 }
 
 type clipFilter struct {
+	m          *mp4.MP4
 	err        error
-	begin, end time.Duration
-	mdatSize   uint32
 	chunks     mdat
+	offset     int64
+	buffer     []byte
+	deltaOff   int
+	begin, end time.Duration
+}
+
+type ClipInterface interface {
+	Filter
+	io.ReadSeeker
+
+	Prepare() error
 }
 
 // Clip returns a filter that extracts a clip between begin and begin + duration (in seconds, starting at 0)
 // Il will try to include a key frame at the beginning, and keeps the same chunks as the origin media
-func Clip(begin, duration time.Duration) Filter {
-	f := &clipFilter{begin: begin, end: begin + duration}
+func Clip(m *mp4.MP4, begin, duration time.Duration) (ClipInterface, error) {
+	end := begin + duration
+
 	if begin < 0 {
-		f.err = ErrClipOutside
+		return nil, ErrClipOutside
 	}
-	return f
+
+	if begin > m.Duration() {
+		return nil, ErrClipOutside
+	}
+
+	if end > m.Duration() {
+		end = m.Duration()
+	}
+
+	if end < 0 {
+		return nil, ErrClipOutside
+	}
+
+	return &clipFilter{
+		m:     m,
+		end:   end,
+		begin: begin,
+	}, nil
 }
 
-func (f *clipFilter) FilterMoov(m *mp4.MoovBox) error {
-	if f.err != nil {
-		return f.err
+func (f *clipFilter) Seek(offset int64, whence int) (int64, error) {
+	size := int64(f.m.Size())
+	noffset := f.offset
+
+	if whence == os.SEEK_END {
+		noffset = size + offset
+	} else if whence == os.SEEK_SET {
+		noffset = offset
+	} else if whence == os.SEEK_CUR {
+		noffset += offset
+	} else {
+		return -1, syscall.EINVAL
 	}
-	if f.begin > time.Second*time.Duration(m.Mvhd.Duration)/time.Duration(m.Mvhd.Timescale) {
-		return ErrClipOutside
+
+	if noffset < 0 {
+		return -1, syscall.EINVAL
 	}
-	if f.end > time.Second*time.Duration(m.Mvhd.Duration)/time.Duration(m.Mvhd.Timescale) || f.end == f.begin {
-		f.end = time.Second * time.Duration(m.Mvhd.Duration) / time.Duration(m.Mvhd.Timescale)
+
+	if noffset > size {
+		return -1, syscall.EINVAL
 	}
+
+	f.offset = noffset
+
+	return noffset, nil
+}
+
+func (f *clipFilter) Read(buf []byte) (n int, err error) {
+	var nn int
+
+	if len(buf) == 0 {
+		return
+	}
+
+	if int(f.offset) < len(f.buffer) {
+		nn := copy(buf, f.buffer[f.offset:])
+		f.offset += int64(nn)
+		n += nn
+	}
+
+	if len(buf) == n {
+		return
+	}
+
+	m := f.m.Moov
+	r := f.m.Mdat.Reader()
+	i := make([]int64, len(m.Trak))
+	s, seekable := r.(io.ReadSeeker)
+	forseek := f.offset + int64(f.deltaOff)
+
+	for _, c := range f.chunks {
+		csize := c.size()
+
+		if c.skip {
+			if seekable {
+				forseek += int64(csize)
+			}
+
+			continue
+		}
+
+		off := m.Trak[c.track].Mdia.Minf.Stbl.Stco.ChunkOffset[i[c.track]]
+
+		i[c.track]++
+
+		if int64(off+csize) < f.offset {
+			continue
+		}
+
+		if seekable {
+			if forseek, err = s.Seek(forseek, os.SEEK_SET); err != nil {
+				return
+			}
+		}
+
+		can := int(csize - (uint32(f.offset) - off))
+
+		if can > len(buf)-n {
+			can = len(buf) - n
+		}
+
+		nn, err = r.Read(buf[n : n+can])
+		f.offset += int64(nn)
+		forseek += int64(nn)
+		n += nn
+
+		if nn != can {
+			if err == nil {
+				err = ErrTruncatedChunk
+			}
+		}
+
+		if err != nil {
+			return
+		}
+
+		if len(buf) == n {
+			return
+		}
+	}
+
+	return
+}
+
+func (f *clipFilter) Filter() error {
+	m := f.m.Moov
 	oldSize := m.Size()
 	f.chunks = []*chunk{}
 	for tnum, t := range m.Trak {
@@ -115,15 +247,36 @@ func (f *clipFilter) FilterMoov(m *mp4.MoovBox) error {
 	}
 	f.updateDurations(m)
 	sort.Sort(f.chunks)
-	for _, c := range f.chunks {
-		sz := 0
-		for _, ssz := range c.samples {
-			sz += int(ssz)
+
+	f.deltaOff = oldSize - m.Size()
+	f.m.Mdat.ContentSize = f.updateChunkOffsets(m)
+
+	return nil
+}
+
+func (f *clipFilter) Prepare() (err error) {
+	buffer := make([]byte, 0)
+	Buffer := bytes.NewBuffer(buffer)
+
+	if err = f.m.Ftyp.Encode(Buffer); err != nil {
+		return
+	}
+
+	if err = f.m.Moov.Encode(Buffer); err != nil {
+		return
+	}
+
+	for _, b := range f.m.Boxes() {
+		if err = b.Encode(Buffer); err != nil {
+			return
 		}
 	}
-	deltaOffset := m.Size() - oldSize
-	f.mdatSize = f.updateChunkOffsets(m, deltaOffset)
-	return nil
+
+	mp4.EncodeHeader(f.m.Mdat, Buffer)
+
+	f.buffer = Buffer.Bytes()
+
+	return
 }
 
 func (f *clipFilter) syncToKF() {
@@ -185,7 +338,6 @@ func (f *clipFilter) updateSamples(tnum int, t *mp4.TrakBox) {
 	firstSample := f.chunks.firstSample(tnum, f.begin)
 	lastSample := f.chunks.lastSample(tnum, f.end)
 
-	log.Printf("first sample %d, last %d", firstSample, lastSample)
 	sample := uint32(1)
 	for i := 0; i < len(oldCount) && sample < lastSample; i++ {
 		if sample+oldCount[i] >= firstSample {
@@ -227,7 +379,6 @@ func (f *clipFilter) updateSamples(tnum int, t *mp4.TrakBox) {
 			stsz.SampleSize = append(stsz.SampleSize, sz)
 		}
 	}
-	log.Printf("stsz => %d", len(stsz.SampleSize))
 
 	// ctts - time offsets
 	ctts := t.Mdia.Minf.Stbl.Ctts
@@ -294,7 +445,7 @@ func (f *clipFilter) updateChunks(tnum int, t *mp4.TrakBox) {
 	stco.ChunkOffset = make([]uint32, index)
 }
 
-func (f *clipFilter) updateChunkOffsets(m *mp4.MoovBox, deltaOff int) uint32 {
+func (f *clipFilter) updateChunkOffsets(m *mp4.MoovBox) uint32 {
 	stco, i := make([]*mp4.StcoBox, len(m.Trak)), make([]int, len(m.Trak))
 	for tnum, t := range m.Trak {
 		stco[tnum] = t.Mdia.Minf.Stbl.Stco
@@ -302,7 +453,7 @@ func (f *clipFilter) updateChunkOffsets(m *mp4.MoovBox, deltaOff int) uint32 {
 	var offset, sz uint32
 	for _, c := range f.chunks {
 		if offset == 0 {
-			offset = uint32(int(c.oldOffset) + deltaOff)
+			offset = uint32(int(c.oldOffset) - f.deltaOff)
 		}
 		if !c.skip {
 			stco[c.track].ChunkOffset[i[c.track]] = offset + sz
@@ -337,49 +488,146 @@ func (f *clipFilter) updateDurations(m *mp4.MoovBox) {
 	}
 }
 
-func (f *clipFilter) FilterMdat(w io.Writer, m *mp4.MdatBox) error {
-	if f.err != nil {
-		return f.err
+func (f *clipFilter) WriteTo(w io.Writer) (n int64, err error) {
+	m := f.m.Mdat
+
+	if err = f.m.Ftyp.Encode(w); err != nil {
+		return
+	} else {
+		n += int64(f.m.Ftyp.Size())
 	}
-	m.ContentSize = f.mdatSize
-	err := mp4.EncodeHeader(m, w)
-	if err != nil {
-		return err
+
+	if err = f.m.Moov.Encode(w); err != nil {
+		return
+	} else {
+		n += int64(f.m.Moov.Size())
 	}
-	var bufSize uint32
-	for _, c := range f.chunks {
-		if c.size() > bufSize {
-			bufSize = c.size()
+
+	for _, b := range f.m.Boxes() {
+		if err = b.Encode(w); err != nil {
+			return
+		} else {
+			n += int64(b.Size())
 		}
 	}
-	buffer := make([]byte, bufSize)
+
+	if err = mp4.EncodeHeader(m, w); err != nil {
+		return
+	}
+
+	n += mp4.BoxHeaderSize
+
+	var nn int64
+
+	r := m.Reader()
+	s, seekable := r.(io.Seeker)
+
 	for _, c := range f.chunks {
-		s := c.size()
+		csize := int64(c.size())
+
 		// Seek if the reader supports it
-		if rs, seekable := m.Reader().(io.Seeker); c.skip && seekable {
-			_, err := rs.Seek(int64(s), 1)
-			if err != nil {
-				return err
+		if c.skip {
+			if seekable {
+				if _, err = s.Seek(csize, os.SEEK_CUR); err != nil {
+					return
+				}
 			}
+
 			continue
 		}
-		// Read otherwise, and only write if the chunk was not skipped
-		n, err := io.ReadFull(m.Reader(), buffer[:s])
+
+		if nn, err = io.CopyN(w, r, csize); err != nil {
+			return
+		}
+
+		if nn != csize {
+			if err == nil {
+				err = ErrTruncatedChunk
+			}
+		}
+
 		if err != nil {
-			return err
-		}
-		if n != int(s) {
-			return ErrTruncatedChunk
-		}
-		if !c.skip {
-			n, err = w.Write(buffer[:s])
-			if err != nil {
-				return err
-			}
-			if n != int(s) {
-				return ErrTruncatedChunk
-			}
+			return
 		}
 	}
-	return nil
+
+	return
+}
+
+func (f *clipFilter) WriteToN(dst io.Writer, size int64) (n int64, err error) {
+	var nn int
+	var nnn int64
+
+	if size == 0 {
+		return
+	}
+
+	for int(f.offset) < len(f.buffer) && err == nil {
+		nn, err = dst.Write(f.buffer[f.offset:])
+		f.offset += int64(nn)
+		n += int64(nn)
+	}
+
+	if size == n {
+		return
+	}
+
+	m := f.m.Moov
+	r := f.m.Mdat.Reader()
+	i := make([]int64, len(m.Trak))
+	s, seekable := r.(io.ReadSeeker)
+	forseek := f.offset + int64(f.deltaOff)
+
+	for _, c := range f.chunks {
+		csize := c.size()
+
+		if c.skip {
+			if seekable {
+				forseek += int64(csize)
+			}
+
+			continue
+		}
+
+		off := m.Trak[c.track].Mdia.Minf.Stbl.Stco.ChunkOffset[i[c.track]]
+
+		i[c.track]++
+
+		if int64(off+csize) < f.offset {
+			continue
+		}
+
+		if seekable {
+			if forseek, err = s.Seek(forseek, os.SEEK_SET); err != nil {
+				return
+			}
+		}
+
+		can := int64(csize - (uint32(f.offset) - off))
+
+		if can > size-n {
+			can = size - n
+		}
+
+		nnn, err = io.CopyN(dst, r, can)
+		f.offset += nnn
+		forseek += nnn
+		n += nnn
+
+		if nnn != can {
+			if err == nil {
+				err = ErrTruncatedChunk
+			}
+		}
+
+		if err != nil {
+			return
+		}
+
+		if size == n {
+			return
+		}
+	}
+
+	return
 }

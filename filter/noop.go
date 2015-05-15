@@ -6,21 +6,49 @@ import (
 	"github.com/jfbus/mp4"
 )
 
-type noopFilter struct{}
+type noopFilter struct {
+	m *mp4.MP4
+}
 
 // Noop returns a filter that does nothing
-func Noop() Filter {
-	return &noopFilter{}
+func Noop(m *mp4.MP4) Filter {
+	return &noopFilter{m}
 }
 
-func (f *noopFilter) FilterMoov(m *mp4.MoovBox) error {
-	return nil
+func (f *noopFilter) Filter() (err error) {
+	return
 }
 
-func (f *noopFilter) FilterMdat(w io.Writer, m *mp4.MdatBox) error {
-	err := mp4.EncodeHeader(m, w)
-	if err == nil {
-		_, err = io.Copy(w, m.Reader())
+func (f *noopFilter) WriteTo(w io.Writer) (n int64, err error) {
+	var nn int64
+
+	if err = f.m.Ftyp.Encode(w); err != nil {
+		return
+	} else {
+		n += int64(f.m.Ftyp.Size())
 	}
-	return err
+
+	if err = f.m.Moov.Encode(w); err != nil {
+		return
+	} else {
+		n += int64(f.m.Moov.Size())
+	}
+
+	for _, b := range f.m.Boxes() {
+		if err = b.Encode(w); err != nil {
+			return
+		} else {
+			n += int64(b.Size())
+		}
+	}
+
+	if err = mp4.EncodeHeader(f.m.Mdat, w); err != nil {
+		return
+	}
+
+	n += mp4.BoxHeaderSize
+	nn, err = io.Copy(w, f.m.Mdat.Reader())
+	n += nn
+
+	return
 }
