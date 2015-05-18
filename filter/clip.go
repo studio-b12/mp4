@@ -65,10 +65,6 @@ func (m mdat) firstSample(tnum int, timecode time.Duration) uint32 {
 }
 
 func (m mdat) lastSample(tnum int, timecode time.Duration) (lastsample uint32) {
-	if len(m) == 0 {
-		return 0
-	}
-
 	for _, c := range m {
 		if c.track != tnum {
 			continue
@@ -337,7 +333,7 @@ func (f *clipFilter) updateSamples(tnum int, t *mp4.TrakBox) {
 		if sample+oldCount[i] >= firstSample {
 			var current uint32
 			switch {
-			case sample < firstSample && sample+oldCount[i] > lastSample:
+			case sample <= firstSample && sample+oldCount[i] > lastSample:
 				current = lastSample - firstSample + 1
 			case sample < firstSample:
 				current = oldCount[i] + sample - firstSample
@@ -374,7 +370,7 @@ func (f *clipFilter) updateSamples(tnum int, t *mp4.TrakBox) {
 		}
 	}
 
-	// ctts - time offsets
+	// ctts - time offsets (b-frames)
 	ctts := t.Mdia.Minf.Stbl.Ctts
 	if ctts != nil {
 		oldCount, oldOffset := ctts.SampleCount, ctts.SampleOffset
@@ -396,7 +392,6 @@ func (f *clipFilter) updateSamples(tnum int, t *mp4.TrakBox) {
 			sample += oldCount[i]
 		}
 	}
-
 }
 
 func (f *clipFilter) updateChunks(tnum int, t *mp4.TrakBox) {
@@ -405,8 +400,10 @@ func (f *clipFilter) updateChunks(tnum int, t *mp4.TrakBox) {
 	stsc.FirstChunk, stsc.SamplesPerChunk, stsc.SampleDescriptionID = []uint32{}, []uint32{}, []uint32{}
 	var firstChunk *chunk
 	var index, firstIndex uint32
+
 	firstSample := f.chunks.firstSample(tnum, f.begin)
 	lastSample := f.chunks.lastSample(tnum, f.end)
+
 	for _, c := range f.chunks {
 		if c.track != tnum {
 			continue
@@ -428,6 +425,7 @@ func (f *clipFilter) updateChunks(tnum int, t *mp4.TrakBox) {
 			firstIndex = index
 		}
 	}
+
 	if firstChunk != nil {
 		stsc.FirstChunk = append(stsc.FirstChunk, firstIndex)
 		stsc.SamplesPerChunk = append(stsc.SamplesPerChunk, uint32(len(firstChunk.samples)))
