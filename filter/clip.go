@@ -57,20 +57,21 @@ func (m mdat) qsort() {
 }
 
 type clipFilter struct {
-	m           *mp4.MP4
-	err         error
-	size        int64
-	chunks      mdat
-	offset      int64
-	buffer      []byte
-	begin, end  time.Duration
-	firstChunk  int
-	realOffset  int64
-	forskip     int64
-	skipped     int64
-	reader      io.Reader
-	firstSample []uint32
-	lastSample  []uint32
+	m            *mp4.MP4
+	err          error
+	size         int64
+	chunks       mdat
+	offset       int64
+	buffer       []byte
+	begin, end   time.Duration
+	firstChunk   int
+	realOffset   int64
+	forskip      int64
+	skipped      int64
+	reader       io.Reader
+	firstSample  []uint32
+	lastSample   []uint32
+	bufferLength int
 }
 
 type ClipInterface interface {
@@ -130,8 +131,8 @@ func (f *clipFilter) Seek(offset int64, whence int) (int64, error) {
 	f.offset = noffset
 	f.skipped = 0
 
-	if noffset-int64(len(f.buffer)) > 0 {
-		f.forskip = noffset - int64(len(f.buffer))
+	if noffset-int64(f.bufferLength) > 0 {
+		f.forskip = noffset - int64(f.bufferLength)
 	} else {
 		f.forskip = 0
 	}
@@ -146,7 +147,7 @@ func (f *clipFilter) Read(buf []byte) (n int, err error) {
 		return
 	}
 
-	if int(f.offset) < len(f.buffer) {
+	if int(f.offset) < f.bufferLength {
 		nn := copy(buf, f.buffer[f.offset:])
 		f.offset += int64(nn)
 		n += nn
@@ -156,6 +157,7 @@ func (f *clipFilter) Read(buf []byte) (n int, err error) {
 		return
 	}
 
+	f.buffer = nil
 	s, seekable := f.reader.(io.ReadSeeker)
 
 	for f.firstChunk < len(f.chunks) {
@@ -281,6 +283,7 @@ func (f *clipFilter) Filter() (err error) {
 	f.size = int64(f.m.Size())
 	f.buffer = Buffer.Bytes()
 	f.reader = f.m.Mdat.Reader()
+	f.bufferLength = len(f.buffer)
 
 	f.m = nil
 
@@ -333,7 +336,7 @@ func (f *clipFilter) WriteToN(dst io.Writer, size int64) (n int64, err error) {
 		return
 	}
 
-	for int(f.offset) < len(f.buffer) && err == nil {
+	for int(f.offset) < f.bufferLength && err == nil {
 		nn, err = dst.Write(f.buffer[f.offset:])
 		f.offset += int64(nn)
 		n += int64(nn)
@@ -343,6 +346,7 @@ func (f *clipFilter) WriteToN(dst io.Writer, size int64) (n int64, err error) {
 		return
 	}
 
+	f.buffer = nil
 	s, seekable := f.reader.(io.ReadSeeker)
 
 	for f.firstChunk < len(f.chunks) {
