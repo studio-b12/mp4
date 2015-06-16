@@ -18,25 +18,29 @@ var (
 )
 
 type chunk struct {
+	trak      uint8
 	size      uint32
-	track     int
 	oldOffset uint32
 }
 
 type clipFilter struct {
-	m            *mp4.MP4
-	err          error
-	size         int64
-	chunks       []chunk
-	offset       int64
-	buffer       []byte
-	begin, end   time.Duration
 	firstChunk   int
-	realOffset   int64
-	forskip      int64
-	skipped      int64
-	reader       io.Reader
 	bufferLength int
+
+	size       int64
+	offset     int64
+	forskip    int64
+	skipped    int64
+	realOffset int64
+
+	buffer []byte
+	chunks []chunk
+
+	m      *mp4.MP4
+	reader io.Reader
+
+	end   time.Duration
+	begin time.Duration
 }
 
 type ClipInterface interface {
@@ -219,8 +223,8 @@ func (f *clipFilter) Filter() (err error) {
 	}
 
 	for _, c := range f.chunks {
-		stco[c.track].ChunkOffset[iter[c.track]] = uint32(bsz) + sz
-		iter[c.track]++
+		stco[c.trak].ChunkOffset[iter[c.trak]] = uint32(bsz) + sz
+		iter[c.trak]++
 		sz += c.size
 	}
 
@@ -459,8 +463,8 @@ func (f *clipFilter) buildChunkList() {
 			}
 
 			f.chunks = append(f.chunks, chunk{
+				trak:      uint8(tnum),
 				size:      size,
-				track:     tnum,
 				oldOffset: off,
 			})
 
