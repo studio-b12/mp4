@@ -25,19 +25,22 @@ type StcoBox struct {
 
 func DecodeStco(r io.Reader) (Box, error) {
 	data, err := ioutil.ReadAll(r)
+
 	if err != nil {
 		return nil, err
 	}
+
+	c := binary.BigEndian.Uint32(data[4:8])
 	b := &StcoBox{
-		Version:     data[0],
 		Flags:       [3]byte{data[1], data[2], data[3]},
-		ChunkOffset: []uint32{},
+		Version:     data[0],
+		ChunkOffset: make([]uint32, c),
 	}
-	ec := binary.BigEndian.Uint32(data[4:8])
-	for i := 0; i < int(ec); i++ {
-		chunk := binary.BigEndian.Uint32(data[(8 + 4*i):(12 + 4*i)])
-		b.ChunkOffset = append(b.ChunkOffset, chunk)
+
+	for i := 0; i < int(c); i++ {
+		b.ChunkOffset[i] = binary.BigEndian.Uint32(data[(8 + 4*i):(12 + 4*i)])
 	}
+
 	return b, nil
 }
 

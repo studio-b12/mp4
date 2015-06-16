@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	// "log"
-	"math/rand"
 	"os"
 	"syscall"
 	"time"
@@ -25,42 +23,11 @@ type chunk struct {
 	oldOffset uint32
 }
 
-type mdat []*chunk
-
-func (m mdat) qsort() {
-	if len(m) < 2 {
-		return
-	}
-
-	left, right := 0, len(m)-1
-
-	// Pick a pivot
-	pivotIndex := rand.Int() % len(m)
-
-	// Move the pivot to the right
-	m[pivotIndex], m[right] = m[right], m[pivotIndex]
-
-	// Pile elements smaller than the pivot on the left
-	for i := range m {
-		if m[i].oldOffset < m[right].oldOffset {
-			m[i], m[left] = m[left], m[i]
-			left++
-		}
-	}
-
-	// Place the pivot after the last smaller element
-	m[left], m[right] = m[right], m[left]
-
-	// Go down the rabbit hole
-	m[:left].qsort()
-	m[left+1:].qsort()
-}
-
 type clipFilter struct {
 	m            *mp4.MP4
 	err          error
 	size         int64
-	chunks       mdat
+	chunks       []chunk
 	offset       int64
 	buffer       []byte
 	begin, end   time.Duration
@@ -69,8 +36,6 @@ type clipFilter struct {
 	forskip      int64
 	skipped      int64
 	reader       io.Reader
-	firstSample  []uint32
-	lastSample   []uint32
 	bufferLength int
 }
 
@@ -151,13 +116,16 @@ func (f *clipFilter) Read(buf []byte) (n int, err error) {
 		nn := copy(buf, f.buffer[f.offset:])
 		f.offset += int64(nn)
 		n += nn
+
+		if int(f.offset) >= f.bufferLength {
+			f.buffer = nil
+		}
 	}
 
 	if len(buf) == n {
 		return
 	}
 
-	f.buffer = nil
 	s, seekable := f.reader.(io.ReadSeeker)
 
 	for f.firstChunk < len(f.chunks) {
@@ -229,8 +197,6 @@ func (f *clipFilter) Read(buf []byte) (n int, err error) {
 
 func (f *clipFilter) Filter() (err error) {
 	f.buildChunkList()
-	f.updateSamples()
-	// co64 ?
 
 	bsz := mp4.BoxHeaderSize
 	bsz += f.m.Ftyp.Size()
@@ -240,13 +206,13 @@ func (f *clipFilter) Filter() (err error) {
 		bsz += b.Size()
 	}
 
-	f.chunks.qsort()
+	qsort(f.chunks)
 
 	// Update chunk offset
 	var sz uint32
 
-	iter := make([]int, len(f.m.Moov.Trak))
-	stco := make([]*mp4.StcoBox, len(f.m.Moov.Trak))
+	iter := make([]int, len(f.m.Moov.Trak), len(f.m.Moov.Trak))
+	stco := make([]*mp4.StcoBox, len(f.m.Moov.Trak), len(f.m.Moov.Trak))
 
 	for tnum, t := range f.m.Moov.Trak {
 		stco[tnum] = t.Mdia.Minf.Stbl.Stco
@@ -340,13 +306,16 @@ func (f *clipFilter) WriteToN(dst io.Writer, size int64) (n int64, err error) {
 		nn, err = dst.Write(f.buffer[f.offset:])
 		f.offset += int64(nn)
 		n += int64(nn)
+
+		if int(f.offset) >= f.bufferLength {
+			f.buffer = nil
+		}
 	}
 
 	if size == n {
 		return
 	}
 
-	f.buffer = nil
 	s, seekable := f.reader.(io.ReadSeeker)
 
 	for f.firstChunk < len(f.chunks) {
@@ -418,38 +387,44 @@ func (f *clipFilter) WriteToN(dst io.Writer, size int64) (n int64, err error) {
 
 func (f *clipFilter) buildChunkList() {
 	var sz int
+	var sample, current uint32
 
 	for _, t := range f.m.Moov.Trak {
 		sz += len(t.Mdia.Minf.Stbl.Stco.ChunkOffset)
 	}
 
-	f.chunks = make([]*chunk, 0, sz)
-	f.firstSample = make([]uint32, len(f.m.Moov.Trak))
-	f.lastSample = make([]uint32, len(f.m.Moov.Trak))
+	f.chunks = make([]chunk, 0, sz)
+	f.m.Moov.Mvhd.Duration = 0
+
+	var fBegin, fEnd uint32
 
 	for tnum, t := range f.m.Moov.Trak {
 		var sci, ssi int
 		var firstChunk *chunk
-		var start, end, p time.Duration
-		var index, firstIndex, firstChunkSamples, firstChunkDescriptionID uint32
+		var start, end, p, index,
+			firstIndex, tFirstSample, tLastSample,
+			firstChunkSamples, firstChunkDescriptionID uint32
 
 		stco := t.Mdia.Minf.Stbl.Stco
 		stsz := t.Mdia.Minf.Stbl.Stsz
 		stsc := t.Mdia.Minf.Stbl.Stsc
 		stts := t.Mdia.Minf.Stbl.Stts
-		stss := t.Mdia.Minf.Stbl.Stss
-		timescale := t.Mdia.Mdhd.Timescale
 
 		FirstChunk := []uint32{}
 		SamplesPerChunk := []uint32{}
 		SampleDescriptionID := []uint32{}
 
-		if stss != nil {
-			for i := 0; i < len(stss.SampleNumber); i++ {
-				tc := stts.GetTimeCode(stss.SampleNumber[i]+1, timescale)
+		fBegin = uint32(int64(f.begin) * int64(t.Mdia.Mdhd.Timescale) / int64(time.Second))
+		fEnd = uint32(int64(f.end) * int64(t.Mdia.Mdhd.Timescale) / int64(time.Second))
 
-				if tc > f.begin {
-					f.begin = p
+		// Find close l-frame
+		if stss := t.Mdia.Minf.Stbl.Stss; stss != nil {
+			for i := 0; i < len(stss.SampleNumber); i++ {
+				tc := stts.GetTimeCode(stss.SampleNumber[i] - 1)
+
+				if tc > fBegin {
+					fBegin = p
+					f.begin = time.Second * time.Duration(p) / time.Duration(t.Mdia.Mdhd.Timescale)
 					break
 				}
 
@@ -476,31 +451,29 @@ func (f *clipFilter) buildChunkList() {
 
 			lastSample := uint32(ssi)
 
-			firstTC := stts.GetTimeCode(firstSample, timescale)
-			lastTC := stts.GetTimeCode(lastSample+1, timescale)
+			firstTC := stts.GetTimeCode(firstSample)
+			lastTC := stts.GetTimeCode(lastSample + 1)
 
-			if lastTC < f.begin || firstTC > f.end {
+			if lastTC < fBegin || firstTC > fEnd {
 				continue
 			}
 
-			c := &chunk{
+			f.chunks = append(f.chunks, chunk{
 				size:      size,
 				track:     tnum,
-				oldOffset: uint32(off),
-			}
+				oldOffset: off,
+			})
 
-			f.chunks = append(f.chunks, c)
-
-			if f.begin >= firstTC && f.begin <= lastTC {
-				if f.firstSample[tnum] == 0 {
-					f.firstSample[tnum] = firstSample
+			if fBegin >= firstTC && fBegin <= lastTC {
+				if tFirstSample == 0 {
+					tFirstSample = firstSample
 				}
 			}
 
-			if f.end >= firstTC && f.end < lastTC {
-				f.lastSample[tnum] = lastSample
+			if fEnd >= firstTC && fEnd < lastTC {
+				tLastSample = lastSample
 			} else if i == len(stco.ChunkOffset)-1 {
-				f.lastSample[tnum] = lastSample
+				tLastSample = lastSample
 			}
 
 			if start == 0 || firstTC < start {
@@ -514,8 +487,8 @@ func (f *clipFilter) buildChunkList() {
 			index++
 
 			if firstChunk == nil {
-				firstChunk = c
 				firstIndex = index
+				firstChunk = &f.chunks[len(f.chunks)-1]
 				firstChunkSamples = samples
 				firstChunkDescriptionID = descriptionID
 			}
@@ -524,15 +497,15 @@ func (f *clipFilter) buildChunkList() {
 				FirstChunk = append(FirstChunk, firstIndex)
 				SamplesPerChunk = append(SamplesPerChunk, firstChunkSamples)
 				SampleDescriptionID = append(SampleDescriptionID, firstChunkDescriptionID)
-				firstChunk = c
 				firstIndex = index
+				firstChunk = &f.chunks[len(f.chunks)-1]
 				firstChunkSamples = samples
 				firstChunkDescriptionID = descriptionID
 			}
 		}
 
-		t.Tkhd.Duration = uint32((end - start) * time.Duration(f.m.Moov.Mvhd.Timescale) / time.Second)
-		t.Mdia.Mdhd.Duration = uint32((end - start) * time.Duration(t.Mdia.Mdhd.Timescale) / time.Second)
+		t.Tkhd.Duration = ((end - start) / t.Mdia.Mdhd.Timescale) * f.m.Moov.Mvhd.Timescale
+		t.Mdia.Mdhd.Duration = end - start
 
 		if t.Tkhd.Duration > f.m.Moov.Mvhd.Duration {
 			f.m.Moov.Mvhd.Duration = t.Tkhd.Duration
@@ -549,83 +522,141 @@ func (f *clipFilter) buildChunkList() {
 		t.Mdia.Minf.Stbl.Stsc.SampleDescriptionID = SampleDescriptionID
 
 		// stco (chunk offsets) - build empty table to compute moov box size
-		t.Mdia.Minf.Stbl.Stco.ChunkOffset = make([]uint32, index)
-	}
-}
+		t.Mdia.Minf.Stbl.Stco.ChunkOffset = make([]uint32, index, index)
 
-func (f *clipFilter) updateSamples() {
-	for tnum, t := range f.m.Moov.Trak {
 		// stts - sample duration
-		stts := t.Mdia.Minf.Stbl.Stts
-		oldCount, oldDelta := stts.SampleCount, stts.SampleTimeDelta
-		stts.SampleCount, stts.SampleTimeDelta = []uint32{}, []uint32{}
+		if stts := t.Mdia.Minf.Stbl.Stts; stts != nil {
+			sample = 1
+			current = 0
 
-		firstSample := f.firstSample[tnum]
-		lastSample := f.lastSample[tnum]
+			oldCount := stts.SampleCount
+			oldDelta := stts.SampleTimeDelta
 
-		sample := uint32(1)
-		for i := 0; i < len(oldCount) && sample < lastSample; i++ {
-			if sample+oldCount[i] >= firstSample {
-				var current uint32
-				switch {
-				case sample <= firstSample && sample+oldCount[i] > lastSample:
-					current = lastSample - firstSample + 1
-				case sample < firstSample:
-					current = oldCount[i] + sample - firstSample
-				case sample+oldCount[i] > lastSample:
-					current = oldCount[i] + sample - lastSample
-				default:
-					current = oldCount[i]
+			stts.SampleCount = make([]uint32, 0, len(oldCount))
+			stts.SampleTimeDelta = make([]uint32, 0, len(oldDelta))
+
+			for i := 0; i < len(oldCount) && sample < tLastSample; i++ {
+				if sample+oldCount[i] >= tFirstSample {
+					switch {
+					case sample <= tFirstSample && sample+oldCount[i] > tLastSample:
+						current = tLastSample - tFirstSample + 1
+					case sample < tFirstSample:
+						current = oldCount[i] + sample - tFirstSample
+					case sample+oldCount[i] > tLastSample:
+						current = oldCount[i] + sample - tLastSample
+					default:
+						current = oldCount[i]
+					}
+
+					stts.SampleCount = append(stts.SampleCount, current)
+					stts.SampleTimeDelta = append(stts.SampleTimeDelta, oldDelta[i])
 				}
-				stts.SampleCount = append(stts.SampleCount, current)
-				stts.SampleTimeDelta = append(stts.SampleTimeDelta, oldDelta[i])
+
+				sample += oldCount[i]
 			}
-			sample += oldCount[i]
 		}
 
 		// stss (key frames)
-		stss := t.Mdia.Minf.Stbl.Stss
-		if stss != nil {
+		if stss := t.Mdia.Minf.Stbl.Stss; stss != nil {
 			oldNumber := stss.SampleNumber
-			stss.SampleNumber = []uint32{}
+			stss.SampleNumber = make([]uint32, 0, len(oldNumber))
+
 			for _, n := range oldNumber {
-				if n >= firstSample && n <= lastSample {
-					stss.SampleNumber = append(stss.SampleNumber, n-uint32(firstSample)+1)
+				if n >= tFirstSample && n <= tLastSample {
+					stss.SampleNumber = append(stss.SampleNumber, n-tFirstSample+1)
 				}
 			}
 		}
 
 		// stsz (sample sizes)
-		stsz := t.Mdia.Minf.Stbl.Stsz
-		oldSize := stsz.SampleSize
-		stsz.SampleSize = []uint32{}
-		for n, sz := range oldSize {
-			if uint32(n) >= firstSample-1 && uint32(n) <= lastSample-1 {
-				stsz.SampleSize = append(stsz.SampleSize, sz)
+		if stsz := t.Mdia.Minf.Stbl.Stsz; stsz != nil {
+			oldSize := stsz.SampleSize
+			stsz.SampleSize = make([]uint32, 0, len(oldSize))
+
+			for n, sz := range oldSize {
+				if uint32(n) >= tFirstSample-1 && uint32(n) <= tLastSample-1 {
+					stsz.SampleSize = append(stsz.SampleSize, sz)
+				}
 			}
 		}
 
 		// ctts - time offsets (b-frames)
-		ctts := t.Mdia.Minf.Stbl.Ctts
-		if ctts != nil {
-			oldCount, oldOffset := ctts.SampleCount, ctts.SampleOffset
-			ctts.SampleCount, ctts.SampleOffset = []uint32{}, []uint32{}
-			sample := uint32(1)
-			for i := 0; i < len(oldCount) && sample < lastSample; i++ {
-				if sample+oldCount[i] >= firstSample {
+		if ctts := t.Mdia.Minf.Stbl.Ctts; ctts != nil {
+			sample = 1
+
+			oldCount := ctts.SampleCount
+			oldOffset := ctts.SampleOffset
+
+			ctts.SampleCount = make([]uint32, 0, len(oldCount))
+			ctts.SampleOffset = make([]uint32, 0, len(oldOffset))
+
+			for i := 0; i < len(oldCount) && sample < tLastSample; i++ {
+				if sample+oldCount[i] >= tFirstSample {
 					current := oldCount[i]
-					if sample < firstSample && sample+oldCount[i] > firstSample {
-						current += sample - firstSample
+
+					if sample+oldCount[i] > tFirstSample && sample < tFirstSample {
+						current += sample - tFirstSample
 					}
-					if sample+oldCount[i] > lastSample {
-						current += lastSample - sample - oldCount[i]
+
+					if sample+oldCount[i] > tLastSample {
+						current += tLastSample - sample - oldCount[i]
 					}
 
 					ctts.SampleCount = append(ctts.SampleCount, current)
 					ctts.SampleOffset = append(ctts.SampleOffset, oldOffset[i])
 				}
+
 				sample += oldCount[i]
 			}
 		}
+
+		// co64 ?
 	}
+}
+
+func qsort(m []chunk) {
+Start:
+	if len(m) <= 3 {
+		if len(m) >= 2 {
+			if m[0].oldOffset > m[1].oldOffset {
+				m[0], m[1] = m[1], m[0]
+			}
+
+			if len(m) == 3 {
+				if m[1].oldOffset > m[2].oldOffset {
+					m[1], m[2] = m[2], m[1]
+
+					if m[0].oldOffset > m[1].oldOffset {
+						m[0], m[1] = m[1], m[0]
+					}
+				}
+			}
+		}
+
+		return
+	}
+
+	left, right := 0, len(m)-1
+	pivotOffset := m[0].oldOffset/4 + m[len(m)/4].oldOffset/4 + m[len(m)*3/4-1].oldOffset/4 + m[len(m)-1].oldOffset/4
+
+	for m[left].oldOffset < pivotOffset {
+		left++
+	}
+
+	for m[right].oldOffset >= pivotOffset {
+		right--
+	}
+
+	for i := left + 1; i <= right; i++ {
+		if m[i].oldOffset < pivotOffset {
+			m[i], m[left] = m[left], m[i]
+			left++
+		}
+	}
+
+	// Go down the rabbit hole
+	qsort(m[:left])
+
+	m = m[left:]
+	goto Start
 }

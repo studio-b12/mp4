@@ -27,22 +27,24 @@ type StszBox struct {
 
 func DecodeStsz(r io.Reader) (Box, error) {
 	data, err := ioutil.ReadAll(r)
+
 	if err != nil {
 		return nil, err
 	}
+
+	c := binary.BigEndian.Uint32(data[8:12])
 	b := &StszBox{
-		Version:           data[0],
 		Flags:             [3]byte{data[1], data[2], data[3]},
+		Version:           data[0],
+		SampleSize:        make([]uint32, c),
+		SampleNumber:      c,
 		SampleUniformSize: binary.BigEndian.Uint32(data[4:8]),
-		SampleNumber:      binary.BigEndian.Uint32(data[8:12]),
-		SampleSize:        []uint32{},
 	}
-	if len(data) > 12 {
-		for i := 0; i < int(b.SampleNumber); i++ {
-			sz := binary.BigEndian.Uint32(data[(12 + 4*i):(16 + 4*i)])
-			b.SampleSize = append(b.SampleSize, sz)
-		}
+
+	for i := 0; i < int(c); i++ {
+		b.SampleSize[i] = binary.BigEndian.Uint32(data[(12 + 4*i):(16 + 4*i)])
 	}
+
 	return b, nil
 }
 

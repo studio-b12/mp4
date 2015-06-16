@@ -20,22 +20,24 @@ type CttsBox struct {
 
 func DecodeCtts(r io.Reader) (Box, error) {
 	data, err := ioutil.ReadAll(r)
+
 	if err != nil {
 		return nil, err
 	}
+
+	c := binary.BigEndian.Uint32(data[4:8])
 	b := &CttsBox{
-		Version:      data[0],
 		Flags:        [3]byte{data[1], data[2], data[3]},
-		SampleCount:  []uint32{},
-		SampleOffset: []uint32{},
+		Version:      data[0],
+		SampleCount:  make([]uint32, c),
+		SampleOffset: make([]uint32, c),
 	}
-	ec := binary.BigEndian.Uint32(data[4:8])
-	for i := 0; i < int(ec); i++ {
-		s_count := binary.BigEndian.Uint32(data[(8 + 8*i):(12 + 8*i)])
-		s_offset := binary.BigEndian.Uint32(data[(12 + 8*i):(16 + 8*i)])
-		b.SampleCount = append(b.SampleCount, s_count)
-		b.SampleOffset = append(b.SampleOffset, s_offset)
+
+	for i := 0; i < int(c); i++ {
+		b.SampleCount[i] = binary.BigEndian.Uint32(data[(8 + 8*i):(12 + 8*i)])
+		b.SampleOffset[i] = binary.BigEndian.Uint32(data[(12 + 8*i):(16 + 8*i)])
 	}
+
 	return b, nil
 }
 

@@ -29,26 +29,26 @@ type StscBox struct {
 
 func DecodeStsc(r io.Reader) (Box, error) {
 	data, err := ioutil.ReadAll(r)
+
 	if err != nil {
 		return nil, err
 	}
 
+	c := binary.BigEndian.Uint32(data[4:8])
 	b := &StscBox{
-		Version:             data[0],
 		Flags:               [3]byte{data[1], data[2], data[3]},
-		FirstChunk:          []uint32{},
-		SamplesPerChunk:     []uint32{},
-		SampleDescriptionID: []uint32{},
+		Version:             data[0],
+		FirstChunk:          make([]uint32, c),
+		SamplesPerChunk:     make([]uint32, c),
+		SampleDescriptionID: make([]uint32, c),
 	}
-	ec := binary.BigEndian.Uint32(data[4:8])
-	for i := 0; i < int(ec); i++ {
-		fc := binary.BigEndian.Uint32(data[(8 + 12*i):(12 + 12*i)])
-		spc := binary.BigEndian.Uint32(data[(12 + 12*i):(16 + 12*i)])
-		sdi := binary.BigEndian.Uint32(data[(16 + 12*i):(20 + 12*i)])
-		b.FirstChunk = append(b.FirstChunk, fc)
-		b.SamplesPerChunk = append(b.SamplesPerChunk, spc)
-		b.SampleDescriptionID = append(b.SampleDescriptionID, sdi)
+
+	for i := 0; i < int(c); i++ {
+		b.FirstChunk[i] = binary.BigEndian.Uint32(data[(8 + 12*i):(12 + 12*i)])
+		b.SamplesPerChunk[i] = binary.BigEndian.Uint32(data[(12 + 12*i):(16 + 12*i)])
+		b.SampleDescriptionID[i] = binary.BigEndian.Uint32(data[(16 + 12*i):(20 + 12*i)])
 	}
+
 	return b, nil
 }
 

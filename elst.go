@@ -21,28 +21,28 @@ type ElstBox struct {
 
 func DecodeElst(r io.Reader) (Box, error) {
 	data, err := ioutil.ReadAll(r)
+
 	if err != nil {
 		return nil, err
 	}
+
+	c := binary.BigEndian.Uint32(data[4:8])
 	b := &ElstBox{
-		Version:           data[0],
 		Flags:             [3]byte{data[1], data[2], data[3]},
-		SegmentDuration:   []uint32{},
-		MediaTime:         []uint32{},
-		MediaRateInteger:  []uint16{},
-		MediaRateFraction: []uint16{},
+		Version:           data[0],
+		MediaTime:         make([]uint32, c),
+		SegmentDuration:   make([]uint32, c),
+		MediaRateInteger:  make([]uint16, c),
+		MediaRateFraction: make([]uint16, c),
 	}
-	ec := binary.BigEndian.Uint32(data[4:8])
-	for i := 0; i < int(ec); i++ {
-		sd := binary.BigEndian.Uint32(data[(8 + 12*i):(12 + 12*i)])
-		mt := binary.BigEndian.Uint32(data[(12 + 12*i):(16 + 12*i)])
-		mri := binary.BigEndian.Uint16(data[(16 + 12*i):(18 + 12*i)])
-		mrf := binary.BigEndian.Uint16(data[(18 + 12*i):(20 + 12*i)])
-		b.SegmentDuration = append(b.SegmentDuration, sd)
-		b.MediaTime = append(b.MediaTime, mt)
-		b.MediaRateInteger = append(b.MediaRateInteger, mri)
-		b.MediaRateFraction = append(b.MediaRateFraction, mrf)
+
+	for i := 0; i < int(c); i++ {
+		b.MediaTime[i] = binary.BigEndian.Uint32(data[(12 + 12*i):(16 + 12*i)])
+		b.SegmentDuration[i] = binary.BigEndian.Uint32(data[(8 + 12*i):(12 + 12*i)])
+		b.MediaRateInteger[i] = binary.BigEndian.Uint16(data[(16 + 12*i):(18 + 12*i)])
+		b.MediaRateFraction[i] = binary.BigEndian.Uint16(data[(18 + 12*i):(20 + 12*i)])
 	}
+
 	return b, nil
 }
 

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"time"
 )
 
 // Decoding Time to Sample Box (stts - mandatory)
@@ -27,22 +26,24 @@ type SttsBox struct {
 
 func DecodeStts(r io.Reader) (Box, error) {
 	data, err := ioutil.ReadAll(r)
+
 	if err != nil {
 		return nil, err
 	}
+
+	c := binary.BigEndian.Uint32(data[4:8])
 	b := &SttsBox{
-		Version:         data[0],
 		Flags:           [3]byte{data[1], data[2], data[3]},
-		SampleCount:     []uint32{},
-		SampleTimeDelta: []uint32{},
+		Version:         data[0],
+		SampleCount:     make([]uint32, c),
+		SampleTimeDelta: make([]uint32, c),
 	}
-	ec := binary.BigEndian.Uint32(data[4:8])
-	for i := 0; i < int(ec); i++ {
-		s_count := binary.BigEndian.Uint32(data[(8 + 8*i):(12 + 8*i)])
-		s_delta := binary.BigEndian.Uint32(data[(12 + 8*i):(16 + 8*i)])
-		b.SampleCount = append(b.SampleCount, s_count)
-		b.SampleTimeDelta = append(b.SampleTimeDelta, s_delta)
+
+	for i := 0; i < int(c); i++ {
+		b.SampleCount[i] = binary.BigEndian.Uint32(data[(8 + 8*i):(12 + 8*i)])
+		b.SampleTimeDelta[i] = binary.BigEndian.Uint32(data[(12 + 8*i):(16 + 8*i)])
 	}
+
 	return b, nil
 }
 
@@ -52,25 +53,6 @@ func (b *SttsBox) Type() string {
 
 func (b *SttsBox) Size() int {
 	return BoxHeaderSize + 8 + len(b.SampleCount)*8
-}
-
-// GetTimeCode returns the timecode (duration since the beginning of the media)
-// of the beginning of a sample
-func (b *SttsBox) GetTimeCode(sample, timescale uint32) time.Duration {
-	sample--
-	var units uint32
-	i := 0
-	for sample > 0 && i < len(b.SampleCount) {
-		if sample >= b.SampleCount[i] {
-			units += b.SampleCount[i] * b.SampleTimeDelta[i]
-			sample -= b.SampleCount[i]
-		} else {
-			units += sample * b.SampleTimeDelta[i]
-			sample = 0
-		}
-		i++
-	}
-	return time.Second * time.Duration(units) / time.Duration(timescale)
 }
 
 func (b *SttsBox) Dump() {
@@ -95,4 +77,20 @@ func (b *SttsBox) Encode(w io.Writer) error {
 	}
 	_, err = w.Write(buf)
 	return err
+}
+
+// GetTimeCode returns the timecode (duration since the beginning of the media)
+// of the beginning of a sample
+func (b *SttsBox) GetTimeCode(sample uint32) (units uint32) {
+	for i := 0; sample > 0 && i < len(b.SampleCount); i++ {
+		if sample >= b.SampleCount[i] {
+			units += b.SampleCount[i] * b.SampleTimeDelta[i]
+			sample -= b.SampleCount[i]
+		} else {
+			units += sample * b.SampleTimeDelta[i]
+			sample = 0
+		}
+	}
+
+	return
 }
