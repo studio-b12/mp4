@@ -7,6 +7,7 @@ import "io"
 // Contained in: Movie Box (moov) or Track Box (trak)
 type UdtaBox struct {
 	Meta *MetaBox
+	Name *NameBox
 }
 
 func DecodeUdta(r io.Reader) (Box, error) {
@@ -19,6 +20,8 @@ func DecodeUdta(r io.Reader) (Box, error) {
 		switch b.Type() {
 		case "meta":
 			u.Meta = b.(*MetaBox)
+		case "name":
+			u.Name = b.(*NameBox)
 		default:
 			return nil, ErrBadFormat
 		}
@@ -31,7 +34,14 @@ func (b *UdtaBox) Type() string {
 }
 
 func (b *UdtaBox) Size() int {
-	return BoxHeaderSize + b.Meta.Size()
+	sz := BoxHeaderSize
+	if b.Meta != nil {
+		sz += b.Meta.Size()
+	}
+	if b.Name != nil {
+		sz += b.Name.Size()
+	}
+	return sz
 }
 
 func (b *UdtaBox) Encode(w io.Writer) error {
@@ -39,5 +49,19 @@ func (b *UdtaBox) Encode(w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	return b.Meta.Encode(w)
+	if b.Meta != nil {
+		err = b.Meta.Encode(w)
+		if err != nil {
+			return err
+		}
+
+	}
+	if b.Name != nil {
+		err = b.Name.Encode(w)
+		if err != nil {
+			return err
+		}
+
+	}
+	return nil
 }

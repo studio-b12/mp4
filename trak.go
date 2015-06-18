@@ -11,6 +11,7 @@ type TrakBox struct {
 	Tkhd *TkhdBox
 	Mdia *MdiaBox
 	Edts *EdtsBox
+	Udta *UdtaBox
 }
 
 func DecodeTrak(r io.Reader) (Box, error) {
@@ -27,6 +28,8 @@ func DecodeTrak(r io.Reader) (Box, error) {
 			t.Mdia = b.(*MdiaBox)
 		case "edts":
 			t.Edts = b.(*EdtsBox)
+		case "udta":
+			t.Udta = b.(*UdtaBox)
 		default:
 			return nil, ErrBadFormat
 		}
@@ -44,6 +47,9 @@ func (b *TrakBox) Size() int {
 	if b.Edts != nil {
 		sz += b.Edts.Size()
 	}
+	if b.Udta != nil {
+		sz += b.Udta.Size()
+	}
 	return sz + BoxHeaderSize
 }
 
@@ -52,6 +58,9 @@ func (b *TrakBox) Dump() {
 	if b.Edts != nil {
 		b.Edts.Dump()
 	}
+	// if b.Udta != nil {
+	// 	b.Udta.Dump()
+	// }
 	b.Mdia.Dump()
 }
 
@@ -66,6 +75,12 @@ func (b *TrakBox) Encode(w io.Writer) error {
 	}
 	if b.Edts != nil {
 		err = b.Edts.Encode(w)
+		if err != nil {
+			return err
+		}
+	}
+	if b.Udta != nil {
+		err = b.Udta.Encode(w)
 		if err != nil {
 			return err
 		}

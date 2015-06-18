@@ -49,6 +49,7 @@ func init() {
 		"meta": DecodeMeta,
 		"mdat": DecodeMdat,
 		"free": DecodeFree,
+		"name": DecodeName,
 	}
 }
 
