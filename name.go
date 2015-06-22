@@ -27,7 +27,7 @@ func (b *NameBox) Type() string {
 }
 
 func (b *NameBox) Size() int {
-	return BoxHeaderSize + 4 + len(b.notDecoded)
+	return BoxHeaderSize + len(b.notDecoded)
 }
 
 func (b *NameBox) Encode(w io.Writer) error {
