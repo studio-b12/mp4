@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 )
 
 // Sample Size Box (stsz - mandatory)
@@ -26,7 +25,7 @@ type StszBox struct {
 }
 
 func DecodeStsz(r io.Reader) (Box, error) {
-	data, err := ioutil.ReadAll(r)
+	data, err := readAllO(r)
 
 	if err != nil {
 		return nil, err
@@ -36,13 +35,16 @@ func DecodeStsz(r io.Reader) (Box, error) {
 	b := &StszBox{
 		Flags:             [3]byte{data[1], data[2], data[3]},
 		Version:           data[0],
-		SampleSize:        make([]uint32, c),
 		SampleNumber:      c,
 		SampleUniformSize: binary.BigEndian.Uint32(data[4:8]),
 	}
 
-	for i := 0; i < int(c); i++ {
-		b.SampleSize[i] = binary.BigEndian.Uint32(data[(12 + 4*i):(16 + 4*i)])
+	if b.SampleUniformSize == 0 {
+		b.SampleSize = make([]uint32, c)
+
+		for i := 0; i < int(c); i++ {
+			b.SampleSize[i] = binary.BigEndian.Uint32(data[(12 + 4*i):(16 + 4*i)])
+		}
 	}
 
 	return b, nil

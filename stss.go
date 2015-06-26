@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 )
 
 // Sync Sample Box (stss - optional)
@@ -21,7 +20,7 @@ type StssBox struct {
 }
 
 func DecodeStss(r io.Reader) (Box, error) {
-	data, err := ioutil.ReadAll(r)
+	data, err := readAllO(r)
 
 	if err != nil {
 		return nil, err

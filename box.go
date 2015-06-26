@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 )
 
 const (
@@ -50,6 +51,9 @@ func init() {
 		"mdat": DecodeMdat,
 		"free": DecodeFree,
 		"name": DecodeName,
+		"tref": DecodeTref,
+		"gmhd": DecodeGmhd,
+		"chpl": DecodeChpl,
 	}
 }
 
@@ -163,4 +167,13 @@ func strtobuf(out []byte, str string, l int) {
 
 func makebuf(b Box) []byte {
 	return make([]byte, b.Size()-BoxHeaderSize)
+}
+
+func readAllO(r io.Reader) ([]byte, error) {
+	if lr, ok := r.(*io.LimitedReader); ok {
+		buf := make([]byte, lr.N)
+		_, err := io.ReadFull(lr, buf)
+		return buf, err
+	}
+	return ioutil.ReadAll(r)
 }

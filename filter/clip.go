@@ -3,7 +3,7 @@ package filter
 import (
 	"bytes"
 	"errors"
-	// "fmt"
+	"fmt"
 	"io"
 	"os"
 	"syscall"
@@ -13,14 +13,24 @@ import (
 )
 
 var (
-	ErrClipOutside     = errors.New("clip zone is outside video")
-	ErrTruncatedChunk  = errors.New("chunk was truncated")
+	ErrClipOutside = errors.New("clip zone is outside video")
+	// ErrTruncatedChunk  = errors.New("chunk was truncated")
 	ErrInvalidDuration = errors.New("invalid duration")
 )
 
+type ErrorChunkTrunc struct {
+	m      string
+	i1, i2 int64
+}
+
+func (e *ErrorChunkTrunc) Error() string {
+	return fmt.Sprintf("%s [%d != %d]", e.m, e.i1, e.i2)
+}
+
 type chunk struct {
-	size      uint32
-	oldOffset uint32
+	size      int64
+	oldOffset int64
+	newOffset int64
 }
 
 type trakInfo struct {
@@ -41,11 +51,9 @@ type clipFilter struct {
 	firstChunk   int
 	bufferLength int
 
-	size       int64
-	offset     int64
-	forskip    int64
-	skipped    int64
-	realOffset int64
+	size    int64
+	offset  int64
+	forskip int64
 
 	buffer []byte
 	chunks []chunk
@@ -112,13 +120,6 @@ func (f *clipFilter) Seek(offset int64, whence int) (int64, error) {
 	}
 
 	f.offset = noffset
-	f.skipped = 0
-
-	if noffset-int64(f.bufferLength) > 0 {
-		f.forskip = noffset - int64(f.bufferLength)
-	} else {
-		f.forskip = 0
-	}
 
 	return noffset, nil
 }
@@ -130,83 +131,49 @@ func (f *clipFilter) Read(buf []byte) (n int, err error) {
 		return
 	}
 
-	if int(f.offset) < f.bufferLength {
+	if int(f.offset) < f.bufferLength && len(buf) > 0 {
 		nn := copy(buf, f.buffer[f.offset:])
 		f.offset += int64(nn)
 		n += nn
+		buf = buf[nn:]
 
 		if int(f.offset) >= f.bufferLength {
 			f.buffer = nil
 		}
 	}
 
-	if len(buf) == n {
-		return
-	}
-
 	s, seekable := f.reader.(io.ReadSeeker)
 
-	for f.firstChunk < len(f.chunks) {
+	for f.firstChunk < len(f.chunks) && err != nil && len(buf) > 0 {
 		c := f.chunks[f.firstChunk]
 
-		if f.realOffset == 0 {
-			f.realOffset = int64(c.oldOffset)
-		}
-
-		if f.skipped < f.forskip {
-			if f.skipped+int64(c.size) > f.forskip {
-				f.realOffset = int64(c.oldOffset) + (f.forskip - f.skipped)
-				f.skipped += int64(c.size)
-			} else {
-				f.realOffset = int64(c.oldOffset + c.size)
-				f.skipped += int64(c.size)
-				f.firstChunk++
-				continue
-			}
-		}
-
-		if seekable {
-			if _, err = s.Seek(f.realOffset, os.SEEK_SET); err != nil {
-				return
-			}
-		}
-
-		can := int(c.size - (uint32(f.realOffset) - c.oldOffset))
-
-		if can <= 0 {
+		if f.offset >= c.newOffset+c.size {
 			f.firstChunk++
 			continue
 		}
 
-		if can > len(buf)-n {
-			can = len(buf) - n
-		}
-
-		nn, err = f.reader.Read(buf[n : n+can])
-		f.offset += int64(nn)
-		n += nn
-
+		realOffset := c.oldOffset + (f.offset - c.newOffset)
 		if seekable {
-			f.realOffset += int64(nn)
-		}
-
-		if uint32(f.realOffset)-c.oldOffset >= c.size {
-			f.firstChunk++
-			f.realOffset = 0
-		}
-
-		if nn != can {
-			if err == nil {
-				err = ErrTruncatedChunk
+			if _, err = s.Seek(realOffset, os.SEEK_SET); err != nil {
+				return
 			}
 		}
 
-		if err != nil {
-			return
+		can := int(c.size - (f.offset - c.newOffset))
+
+		if can > len(buf) {
+			can = len(buf)
 		}
 
-		if len(buf) == n {
-			return
+		nn, err = io.ReadFull(f.reader, buf[:can])
+		f.offset += int64(nn)
+		n += nn
+		buf = buf[nn:]
+
+		if nn != can {
+			if err == nil {
+				err = &ErrorChunkTrunc{"chunk was truncated: Read", int64(can), int64(nn)}
+			}
 		}
 	}
 
@@ -256,9 +223,32 @@ func (f *clipFilter) Filter() (err error) {
 	f.reader = f.m.Mdat.Reader()
 	f.bufferLength = len(f.buffer)
 
+	f.compactChunks()
+
 	f.m = nil
 
 	return
+}
+
+func (f *clipFilter) compactChunks() {
+	newChunks := make([]chunk, 0, 4)
+	last := f.chunks[0]
+	last.newOffset = int64(f.bufferLength)
+	lastBound := last.oldOffset + last.size
+	for i := 1; i < len(f.chunks); i++ {
+		ch := f.chunks[i]
+		if lastBound == ch.oldOffset {
+			lastBound += ch.size
+			last.size += ch.size
+		} else {
+			newChunks = append(newChunks, last)
+			ch.newOffset = last.newOffset + last.size
+			last = ch
+			lastBound = ch.oldOffset + ch.size
+		}
+	}
+	newChunks = append(newChunks, last)
+	f.chunks = newChunks
 }
 
 func (f *clipFilter) WriteTo(w io.Writer) (n int64, err error) {
@@ -281,13 +271,15 @@ func (f *clipFilter) WriteTo(w io.Writer) (n int64, err error) {
 			}
 		}
 
-		if nnn, err = io.CopyN(w, f.reader, csize); err != nil {
+		nnn, err = io.CopyN(w, f.reader, csize)
+		n += nnn
+		if err != nil {
 			return
 		}
 
 		if nnn != csize {
 			if err == nil {
-				err = ErrTruncatedChunk
+				err = &ErrorChunkTrunc{"chunk was truncated: WriteTo", csize, nnn}
 			}
 		}
 
@@ -307,53 +299,41 @@ func (f *clipFilter) WriteToN(dst io.Writer, size int64) (n int64, err error) {
 		return
 	}
 
-	for int(f.offset) < f.bufferLength && err == nil {
-		nn, err = dst.Write(f.buffer[f.offset:])
+	for int(f.offset) < f.bufferLength && err == nil && n < size {
+		can := int64(f.bufferLength - int(f.offset))
+
+		if can > size {
+			can = size
+		}
+
+		nn, err = dst.Write(f.buffer[f.offset : f.offset+can])
 		f.offset += int64(nn)
 		n += int64(nn)
 
-		if int(f.offset) >= f.bufferLength {
+		if int(f.offset) == f.bufferLength {
 			f.buffer = nil
 		}
 	}
 
-	if size == n {
-		return
-	}
-
 	s, seekable := f.reader.(io.ReadSeeker)
 
-	for f.firstChunk < len(f.chunks) {
+	for f.firstChunk < len(f.chunks) && err == nil && n < size {
 		c := f.chunks[f.firstChunk]
 
-		if f.realOffset == 0 {
-			f.realOffset = int64(c.oldOffset)
+		if f.offset >= c.newOffset+c.size {
+			f.firstChunk++
+			continue
 		}
 
-		if f.skipped < f.forskip {
-			if f.skipped+int64(c.size) > f.forskip {
-				f.realOffset = int64(c.oldOffset) + (f.forskip - f.skipped)
-				f.skipped += int64(c.size)
-			} else {
-				f.realOffset = int64(c.oldOffset + c.size)
-				f.skipped += int64(c.size)
-				f.firstChunk++
-				continue
-			}
-		}
+		realOffset := c.oldOffset + (f.offset - c.newOffset)
 
 		if seekable {
-			if _, err = s.Seek(f.realOffset, os.SEEK_SET); err != nil {
+			if _, err = s.Seek(realOffset, os.SEEK_SET); err != nil {
 				return
 			}
 		}
 
-		can := int64(c.size - (uint32(f.realOffset) - c.oldOffset))
-
-		if can <= 0 {
-			f.firstChunk++
-			continue
-		}
+		can := c.size - (f.offset - c.newOffset)
 
 		if can > size-n {
 			can = size - n
@@ -363,27 +343,10 @@ func (f *clipFilter) WriteToN(dst io.Writer, size int64) (n int64, err error) {
 		f.offset += nnn
 		n += nnn
 
-		if seekable {
-			f.realOffset += nnn
-		}
-
-		if uint32(f.realOffset)-c.oldOffset >= c.size {
-			f.firstChunk++
-			f.realOffset = 0
-		}
-
 		if nnn != can {
 			if err == nil {
-				err = ErrTruncatedChunk
+				err = &ErrorChunkTrunc{"chunk was truncated: WriteToN", can, nnn}
 			}
-		}
-
-		if err != nil {
-			return
-		}
-
-		if size == n {
-			return
 		}
 	}
 
@@ -523,8 +486,8 @@ func (f *clipFilter) buildChunkList() {
 		f.m.Mdat.ContentSize += size
 
 		f.chunks = append(f.chunks, chunk{
-			size:      size,
-			oldOffset: mv,
+			size:      int64(size),
+			oldOffset: int64(mv),
 		})
 
 		cti.index++
@@ -551,6 +514,16 @@ func (f *clipFilter) buildChunkList() {
 		stco := t.Mdia.Minf.Stbl.Stco
 		stsc := t.Mdia.Minf.Stbl.Stsc
 		stsz := t.Mdia.Minf.Stbl.Stsz
+		stts := t.Mdia.Minf.Stbl.Stts
+
+		end := stts.GetTimeCode(cti.currentSample + 1)
+
+		t.Tkhd.Duration = ((end - cti.startTC) / t.Mdia.Mdhd.Timescale) * f.m.Moov.Mvhd.Timescale
+		t.Mdia.Mdhd.Duration = end - cti.startTC
+
+		if t.Tkhd.Duration > f.m.Moov.Mvhd.Duration {
+			f.m.Moov.Mvhd.Duration = t.Tkhd.Duration
+		}
 
 		if !cti.rebuilded {
 			for i := cti.currentChunk; i < len(stco.ChunkOffset); i++ {
@@ -574,8 +547,8 @@ func (f *clipFilter) buildChunkList() {
 				f.m.Mdat.ContentSize += size
 
 				f.chunks = append(f.chunks, chunk{
-					size:      size,
-					oldOffset: stco.ChunkOffset[i],
+					size:      int64(size),
+					oldOffset: int64(stco.ChunkOffset[i]),
 				})
 
 				if samples != firstChunkSamples[tnum] || descriptionID != firstChunkDescriptionID[tnum] {
@@ -700,15 +673,6 @@ func (f *clipFilter) buildChunkList() {
 		}
 
 		// co64 ?
-
-		end := t.Mdia.Minf.Stbl.Stts.GetTimeCode(cti.currentSample + 1)
-
-		t.Tkhd.Duration = ((end - cti.startTC) / t.Mdia.Mdhd.Timescale) * f.m.Moov.Mvhd.Timescale
-		t.Mdia.Mdhd.Duration = end - cti.startTC
-
-		if t.Tkhd.Duration > f.m.Moov.Mvhd.Duration {
-			f.m.Moov.Mvhd.Duration = t.Tkhd.Duration
-		}
 
 		t.Mdia.Minf.Stbl.Stco.ChunkOffset = newChunkOffset[tnum]
 

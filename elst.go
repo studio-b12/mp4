@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 )
 
 // Edit List Box (elst - optional)
@@ -20,7 +19,7 @@ type ElstBox struct {
 }
 
 func DecodeElst(r io.Reader) (Box, error) {
-	data, err := ioutil.ReadAll(r)
+	data, err := readAllO(r)
 
 	if err != nil {
 		return nil, err

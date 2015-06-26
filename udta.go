@@ -8,6 +8,7 @@ import "io"
 type UdtaBox struct {
 	Meta *MetaBox
 	Name *NameBox
+	Chpl *ChplBox
 }
 
 func DecodeUdta(r io.Reader) (Box, error) {
@@ -22,6 +23,8 @@ func DecodeUdta(r io.Reader) (Box, error) {
 			u.Meta = b.(*MetaBox)
 		case "name":
 			u.Name = b.(*NameBox)
+		case "chpl":
+			u.Chpl = b.(*ChplBox)
 		default:
 			return nil, ErrBadFormat
 		}
@@ -41,6 +44,9 @@ func (b *UdtaBox) Size() int {
 	if b.Name != nil {
 		sz += b.Name.Size()
 	}
+	if b.Chpl != nil {
+		sz += b.Chpl.Size()
+	}
 	return sz
 }
 
@@ -54,14 +60,18 @@ func (b *UdtaBox) Encode(w io.Writer) error {
 		if err != nil {
 			return err
 		}
-
 	}
 	if b.Name != nil {
 		err = b.Name.Encode(w)
 		if err != nil {
 			return err
 		}
-
+	}
+	if b.Chpl != nil {
+		err = b.Chpl.Encode(w)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

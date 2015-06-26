@@ -13,6 +13,7 @@ type MinfBox struct {
 	Stbl *StblBox
 	Dinf *DinfBox
 	Hdlr *HdlrBox
+	Gmhd *GmhdBox
 }
 
 func DecodeMinf(r io.Reader) (Box, error) {
@@ -33,6 +34,8 @@ func DecodeMinf(r io.Reader) (Box, error) {
 			m.Dinf = b.(*DinfBox)
 		case "hdlr":
 			m.Hdlr = b.(*HdlrBox)
+		case "gmhd":
+			m.Gmhd = b.(*GmhdBox)
 		}
 	}
 	return m, nil
@@ -56,6 +59,9 @@ func (b *MinfBox) Size() int {
 	}
 	if b.Hdlr != nil {
 		sz += b.Hdlr.Size()
+	}
+	if b.Gmhd != nil {
+		sz += b.Gmhd.Size()
 	}
 	return sz + BoxHeaderSize
 }
@@ -88,6 +94,12 @@ func (b *MinfBox) Encode(w io.Writer) error {
 	err = b.Stbl.Encode(w)
 	if err != nil {
 		return err
+	}
+	if b.Gmhd != nil {
+		err = b.Gmhd.Encode(w)
+		if err != nil {
+			return err
+		}
 	}
 	if b.Hdlr != nil {
 		return b.Hdlr.Encode(w)

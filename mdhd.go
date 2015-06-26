@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"time"
 )
 
@@ -27,7 +26,7 @@ type MdhdBox struct {
 }
 
 func DecodeMdhd(r io.Reader) (Box, error) {
-	data, err := ioutil.ReadAll(r)
+	data, err := readAllO(r)
 	if err != nil {
 		return nil, err
 	}

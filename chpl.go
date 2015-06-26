@@ -4,32 +4,32 @@ import (
 	"io"
 )
 
-// Name Box
+// Chpl Box (apple)
 //
 // Status: not decoded
-type NameBox struct {
+type ChplBox struct {
 	notDecoded []byte
 }
 
-func DecodeName(r io.Reader) (Box, error) {
+func DecodeChpl(r io.Reader) (Box, error) {
 	data, err := readAllO(r)
 	if err != nil {
 		return nil, err
 	}
-	return &NameBox{
+	return &ChplBox{
 		notDecoded: data[:],
 	}, nil
 }
 
-func (b *NameBox) Type() string {
-	return "name"
+func (b *ChplBox) Type() string {
+	return "chpl"
 }
 
-func (b *NameBox) Size() int {
+func (b *ChplBox) Size() int {
 	return BoxHeaderSize + len(b.notDecoded)
 }
 
-func (b *NameBox) Encode(w io.Writer) error {
+func (b *ChplBox) Encode(w io.Writer) error {
 	err := EncodeHeader(b, w)
 	if err != nil {
 		return err

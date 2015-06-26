@@ -3,7 +3,6 @@ package mp4
 import (
 	"encoding/binary"
 	"io"
-	"io/ioutil"
 )
 
 // Sound Media Header Box (smhd - mandatory for sound tracks)
@@ -18,7 +17,7 @@ type SmhdBox struct {
 }
 
 func DecodeSmhd(r io.Reader) (Box, error) {
-	data, err := ioutil.ReadAll(r)
+	data, err := readAllO(r)
 	if err != nil {
 		return nil, err
 	}

@@ -2,7 +2,6 @@ package mp4
 
 import (
 	"io"
-	"io/ioutil"
 )
 
 // Object Descriptor Container Box (iods - optional)
@@ -15,7 +14,7 @@ type IodsBox struct {
 }
 
 func DecodeIods(r io.Reader) (Box, error) {
-	data, err := ioutil.ReadAll(r)
+	data, err := readAllO(r)
 	if err != nil {
 		return nil, err
 	}

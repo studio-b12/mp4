@@ -2,7 +2,6 @@ package mp4
 
 import (
 	"io"
-	"io/ioutil"
 )
 
 // Sample Description Box (stsd - manatory)
@@ -19,7 +18,7 @@ type StsdBox struct {
 }
 
 func DecodeStsd(r io.Reader) (Box, error) {
-	data, err := ioutil.ReadAll(r)
+	data, err := readAllO(r)
 	if err != nil {
 		return nil, err
 	}

@@ -3,7 +3,6 @@ package mp4
 import (
 	"encoding/binary"
 	"io"
-	"io/ioutil"
 )
 
 // Handler Reference Box (hdlr - mandatory)
@@ -24,7 +23,7 @@ type HdlrBox struct {
 }
 
 func DecodeHdlr(r io.Reader) (Box, error) {
-	data, err := ioutil.ReadAll(r)
+	data, err := readAllO(r)
 	if err != nil {
 		return nil, err
 	}

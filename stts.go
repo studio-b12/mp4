@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 )
 
 // Decoding Time to Sample Box (stts - mandatory)
@@ -25,7 +24,7 @@ type SttsBox struct {
 }
 
 func DecodeStts(r io.Reader) (Box, error) {
-	data, err := ioutil.ReadAll(r)
+	data, err := readAllO(r)
 
 	if err != nil {
 		return nil, err
