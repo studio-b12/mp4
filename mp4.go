@@ -2,6 +2,8 @@ package mp4
 
 import (
 	"io"
+	"math"
+	"strconv"
 	"time"
 )
 
@@ -100,4 +102,25 @@ func (m *MP4) Size() (size int) {
 
 func (m *MP4) Duration() time.Duration {
 	return time.Second * time.Duration(m.Moov.Mvhd.Duration) / time.Duration(m.Moov.Mvhd.Timescale)
+}
+
+func (m *MP4) VideoResolution() (int, int) {
+	for _, trak := range m.Moov.Trak {
+		h, _ := strconv.ParseFloat(trak.Tkhd.Height.String(), 64)
+		w, _ := strconv.ParseFloat(trak.Tkhd.Width.String(), 64)
+		if h > 0 && w > 0 {
+			return int(math.Floor(w)), int(math.Floor(h))
+		}
+	}
+	return 0, 0
+}
+
+func (m *MP4) AudioVolume() float64 {
+	for _, trak := range m.Moov.Trak {
+		vol, _ := strconv.ParseFloat(trak.Tkhd.Volume.String(), 64)
+		if vol > 0 {
+			return vol
+		}
+	}
+	return 0.0
 }
