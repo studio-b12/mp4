@@ -104,7 +104,7 @@ func (m *MP4) Duration() time.Duration {
 	return time.Second * time.Duration(m.Moov.Mvhd.Duration) / time.Duration(m.Moov.Mvhd.Timescale)
 }
 
-func (m *MP4) VideoResolution() (int, int) {
+func (m *MP4) VideoDimensions() (int, int) {
 	for _, trak := range m.Moov.Trak {
 		h, _ := strconv.ParseFloat(trak.Tkhd.Height.String(), 64)
 		w, _ := strconv.ParseFloat(trak.Tkhd.Width.String(), 64)
