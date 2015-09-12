@@ -3,7 +3,7 @@ package filter
 import (
 	"io"
 
-	"github.com/jfbus/mp4"
+	"github.com/MStoykov/mp4"
 )
 
 type noopFilter struct {

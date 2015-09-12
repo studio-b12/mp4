@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jfbus/mp4"
+	"github.com/MStoykov/mp4"
 )
 
 var (
