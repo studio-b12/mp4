@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-// Chunk Offset Box (stco - mandatory)
+// StcoBox is Chunk Offset Box (stco - mandatory)
 //
 // Contained in : Sample Table box (stbl)
 //
@@ -22,6 +22,7 @@ type StcoBox struct {
 	ChunkOffset []uint32
 }
 
+// DecodeStco does what it says on the tin
 func DecodeStco(r io.Reader) (Box, error) {
 	data, err := readAllO(r)
 
@@ -43,14 +44,17 @@ func DecodeStco(r io.Reader) (Box, error) {
 	return b, nil
 }
 
+// Type returns stco
 func (b *StcoBox) Type() string {
 	return "stco"
 }
 
+// Size returns the size of the box
 func (b *StcoBox) Size() int {
 	return BoxHeaderSize + 8 + len(b.ChunkOffset)*4
 }
 
+// Dump s the box
 func (b *StcoBox) Dump() {
 	fmt.Println("Chunk byte offsets:")
 	for i, o := range b.ChunkOffset {
@@ -58,6 +62,7 @@ func (b *StcoBox) Dump() {
 	}
 }
 
+// Encode encode to the provided writer
 func (b *StcoBox) Encode(w io.Writer) error {
 	err := EncodeHeader(b, w)
 	if err != nil {

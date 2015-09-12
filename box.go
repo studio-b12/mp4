@@ -63,7 +63,7 @@ func init() {
 // The header of a box
 type BoxHeader struct {
 	Type string
-	Size uint32
+	Size uint64
 }
 
 // DecodeHeader decodes a box header (size + box type)
@@ -76,7 +76,20 @@ func DecodeHeader(r io.Reader) (BoxHeader, error) {
 	if n != BoxHeaderSize {
 		return BoxHeader{}, ErrTruncatedHeader
 	}
-	return BoxHeader{string(buf[4:8]), binary.BigEndian.Uint32(buf[0:4])}, nil
+	typeName := string(buf[4:8])
+	size := uint64(binary.BigEndian.Uint32(buf[0:4]))
+	if size == 1 { // 64 bit size
+		buf = make([]byte, 8)
+		n, err := r.Read(buf)
+		if err != nil {
+			return BoxHeader{}, err
+		}
+		if n != 8 {
+			return BoxHeader{}, ErrTruncatedHeader
+		}
+		size = binary.BigEndian.Uint64(buf[0:8])
+	}
+	return BoxHeader{typeName, size}, nil
 }
 
 // EncodeHeader encodes a box header to a writer

@@ -13,11 +13,13 @@ import (
 )
 
 var (
+	// ErrClipOutside is returned when the clip operation is outside the video
 	ErrClipOutside = errors.New("clip zone is outside video")
-	// ErrTruncatedChunk  = errors.New("chunk was truncated")
+	// ErrInvalidDuration is returned when the provided duration is invalid
 	ErrInvalidDuration = errors.New("invalid duration")
 )
 
+// ErrorChunkTrunc is custom error type for when a chunk is truncated
 type ErrorChunkTrunc struct {
 	m      string
 	i1, i2 int64
@@ -40,9 +42,9 @@ type trakInfo struct {
 	currentChunk int
 
 	index         uint32
-	startTC       uint32
-	filterBegin   uint32
-	filterEnd     uint32
+	startTC       uint64
+	filterBegin   uint64
+	filterEnd     uint64
 	currentSample uint32
 	firstSample   uint32
 }
@@ -65,6 +67,7 @@ type clipFilter struct {
 	begin time.Duration
 }
 
+// ClipInterface is interface for the clip filter
 type ClipInterface interface {
 	Filter
 	io.ReadSeeker
@@ -183,24 +186,23 @@ func (f *clipFilter) Read(buf []byte) (n int, err error) {
 func (f *clipFilter) Filter() (err error) {
 	f.buildChunkList()
 
-	bsz := uint32(mp4.BoxHeaderSize)
-	bsz += uint32(f.m.Ftyp.Size())
-	bsz += uint32(f.m.Moov.Size())
+	bsz := uint64(mp4.BoxHeaderSize)
+	bsz += uint64(f.m.Ftyp.Size())
+	bsz += uint64(f.m.Moov.Size())
 
 	for _, b := range f.m.Boxes() {
-		bsz += uint32(b.Size())
+		bsz += uint64(b.Size())
 	}
 
 	// Update chunk offset
 	for _, t := range f.m.Moov.Trak {
-		for i, _ := range t.Mdia.Minf.Stbl.Stco.ChunkOffset {
-			t.Mdia.Minf.Stbl.Stco.ChunkOffset[i] += bsz
+		for i := range t.Mdia.Minf.Stbl.Stco.ChunkOffset {
+			t.Mdia.Minf.Stbl.Stco.ChunkOffset[i] += uint32(bsz) // !TODO implement for co64
 		}
 	}
 
 	// Prepare blob with moov and other small atoms
-	buffer := make([]byte, 0)
-	Buffer := bytes.NewBuffer(buffer)
+	var Buffer = bytes.NewBuffer(nil)
 
 	if err = f.m.Ftyp.Encode(Buffer); err != nil {
 		return
@@ -355,7 +357,8 @@ func (f *clipFilter) WriteToN(dst io.Writer, size int64) (n int64, err error) {
 
 func (f *clipFilter) buildChunkList() {
 	var sz, mt int
-	var mv, off, size, firstTC, lastTC, sample, current, samples, descriptionID uint32
+	var mv, off, size, firstTC, lastTC uint64
+	var samples, descriptionID, sample, current uint32
 
 	for _, t := range f.m.Moov.Trak {
 		sz += len(t.Mdia.Minf.Stbl.Stco.ChunkOffset)
@@ -371,6 +374,7 @@ func (f *clipFilter) buildChunkList() {
 
 	newFirstChunk := make([][]uint32, cnt, cnt)
 	newChunkOffset := make([][]uint32, cnt, cnt)
+	newChunkOffset64 := make([][]uint64, cnt, cnt)
 	newSamplesPerChunk := make([][]uint32, cnt, cnt)
 	newSampleDescriptionID := make([][]uint32, cnt, cnt)
 
@@ -382,23 +386,24 @@ func (f *clipFilter) buildChunkList() {
 
 	// Find close l-frame fro begin and end
 	for tnum, t := range f.m.Moov.Trak {
-		var p uint32
+		var p uint64
 
 		cti := &ti[tnum]
 
 		newFirstChunk[tnum] = make([]uint32, 0, len(t.Mdia.Minf.Stbl.Stsc.FirstChunk))
 		newChunkOffset[tnum] = make([]uint32, 0, len(t.Mdia.Minf.Stbl.Stco.ChunkOffset))
+		newChunkOffset64[tnum] = make([]uint64, 0, len(t.Mdia.Minf.Stbl.Stco.ChunkOffset)) // for co64
 		newSamplesPerChunk[tnum] = make([]uint32, 0, len(t.Mdia.Minf.Stbl.Stsc.SamplesPerChunk))
 		newSampleDescriptionID[tnum] = make([]uint32, 0, len(t.Mdia.Minf.Stbl.Stsc.SampleDescriptionID))
 
-		cti.filterBegin = uint32(int64(fbegin) * int64(t.Mdia.Mdhd.Timescale) / int64(time.Second))
-		cti.filterEnd = uint32(int64(fend) * int64(t.Mdia.Mdhd.Timescale) / int64(time.Second))
+		cti.filterBegin = uint64(int64(fbegin) * int64(t.Mdia.Mdhd.Timescale) / int64(time.Second))
+		cti.filterEnd = uint64(int64(fend) * int64(t.Mdia.Mdhd.Timescale) / int64(time.Second))
 
 		if stss := t.Mdia.Minf.Stbl.Stss; stss != nil {
 			stts := t.Mdia.Minf.Stbl.Stts
 
 			for i := 0; i < len(stss.SampleNumber); i++ {
-				tc := stts.GetTimeCode(stss.SampleNumber[i] - 1)
+				tc := uint64(stts.GetTimeCode(stss.SampleNumber[i] - 1))
 
 				if tc > cti.filterBegin {
 					cti.filterBegin = p
@@ -419,16 +424,16 @@ func (f *clipFilter) buildChunkList() {
 		stsc := t.Mdia.Minf.Stbl.Stsc
 		stts := t.Mdia.Minf.Stbl.Stts
 
-		for i, _ := range stco.ChunkOffset {
+		for i := range stco.ChunkOffset {
 			if cti.sci < len(stsc.FirstChunk)-1 && i+1 >= int(stsc.FirstChunk[cti.sci+1]) {
 				cti.sci++
 			}
 
 			samples = stsc.SamplesPerChunk[cti.sci]
 
-			firstTC = stts.GetTimeCode(cti.currentSample + 1)
-			cti.currentSample += samples
-			lastTC = stts.GetTimeCode(cti.currentSample + 1)
+			firstTC = uint64(stts.GetTimeCode(cti.currentSample + 1))
+			cti.currentSample += uint32(samples)
+			lastTC = uint64(stts.GetTimeCode(cti.currentSample + 1))
 
 			if lastTC < cti.filterBegin || firstTC > cti.filterEnd {
 				continue
@@ -456,14 +461,15 @@ func (f *clipFilter) buildChunkList() {
 				continue
 			}
 
-			if mv == 0 || t.Mdia.Minf.Stbl.Stco.ChunkOffset[ti[tnum].currentChunk] < mv {
+			if mv == 0 || uint64(t.Mdia.Minf.Stbl.Stco.ChunkOffset[ti[tnum].currentChunk]) < mv {
 				mt = tnum
-				mv = t.Mdia.Minf.Stbl.Stco.ChunkOffset[ti[tnum].currentChunk]
+				mv = uint64(t.Mdia.Minf.Stbl.Stco.ChunkOffset[ti[tnum].currentChunk])
 			}
 		}
 
 		cti := &ti[mt]
-		newChunkOffset[mt] = append(newChunkOffset[mt], off)
+		newChunkOffset[mt] = append(newChunkOffset[mt], uint32(off))
+		newChunkOffset64[mt] = append(newChunkOffset64[mt], off)
 
 		stsc := f.m.Moov.Trak[mt].Mdia.Minf.Stbl.Stsc
 		stsz := f.m.Moov.Trak[mt].Mdia.Minf.Stbl.Stsz
@@ -479,7 +485,7 @@ func (f *clipFilter) buildChunkList() {
 
 		for i := 0; i < int(samples); i++ {
 			cti.currentSample++
-			size += stsz.GetSampleSize(int(cti.currentSample))
+			size += uint64(stsz.GetSampleSize(int(cti.currentSample)))
 		}
 
 		off += size
@@ -518,8 +524,8 @@ func (f *clipFilter) buildChunkList() {
 
 		end := stts.GetTimeCode(cti.currentSample + 1)
 
-		t.Tkhd.Duration = ((end - cti.startTC) / t.Mdia.Mdhd.Timescale) * f.m.Moov.Mvhd.Timescale
-		t.Mdia.Mdhd.Duration = end - cti.startTC
+		t.Tkhd.Duration = ((uint64(end) - cti.startTC) / uint64(t.Mdia.Mdhd.Timescale)) * uint64(f.m.Moov.Mvhd.Timescale)
+		t.Mdia.Mdhd.Duration = uint64(end) - cti.startTC
 
 		if t.Tkhd.Duration > f.m.Moov.Mvhd.Duration {
 			f.m.Moov.Mvhd.Duration = t.Tkhd.Duration
@@ -527,7 +533,8 @@ func (f *clipFilter) buildChunkList() {
 
 		if !cti.rebuilded {
 			for i := cti.currentChunk; i < len(stco.ChunkOffset); i++ {
-				newChunkOffset[tnum] = append(newChunkOffset[tnum], off)
+				newChunkOffset[tnum] = append(newChunkOffset[tnum], uint32(off))
+				newChunkOffset64[tnum] = append(newChunkOffset64[tnum], off)
 
 				if cti.sci < len(stsc.FirstChunk)-1 && cti.currentChunk+1 >= int(stsc.FirstChunk[cti.sci+1]) {
 					cti.sci++
@@ -540,7 +547,7 @@ func (f *clipFilter) buildChunkList() {
 
 				for i := 0; i < int(samples); i++ {
 					cti.currentSample++
-					size += stsz.GetSampleSize(int(cti.currentSample))
+					size += uint64(stsz.GetSampleSize(int(cti.currentSample)))
 				}
 
 				off += size
@@ -675,6 +682,7 @@ func (f *clipFilter) buildChunkList() {
 		// co64 ?
 
 		t.Mdia.Minf.Stbl.Stco.ChunkOffset = newChunkOffset[tnum]
+		// t.Mdia.Minf.Stbl.Co64.ChunkOffset = newChunkOffset64[tnum] // implement
 
 		t.Mdia.Minf.Stbl.Stsc.FirstChunk = newFirstChunk[tnum]
 		t.Mdia.Minf.Stbl.Stsc.SamplesPerChunk = newSamplesPerChunk[tnum]

@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-// Sample Size Box (stsz - mandatory)
+// StszBox -  Sample Size Box (stsz - mandatory)
 //
 // Contained in : Sample Table box (stbl)
 //
@@ -24,6 +24,7 @@ type StszBox struct {
 	SampleSize        []uint32
 }
 
+// DecodeStsz - decodes
 func DecodeStsz(r io.Reader) (Box, error) {
 	data, err := readAllO(r)
 
@@ -50,14 +51,17 @@ func DecodeStsz(r io.Reader) (Box, error) {
 	return b, nil
 }
 
+// Type returns stsz
 func (b *StszBox) Type() string {
 	return "stsz"
 }
 
+// Size returns the size of the box
 func (b *StszBox) Size() int {
 	return BoxHeaderSize + 12 + len(b.SampleSize)*4
 }
 
+// Dump dumps
 func (b *StszBox) Dump() {
 	if len(b.SampleSize) == 0 {
 		fmt.Printf("Samples : %d total samples\n", b.SampleNumber)
@@ -74,6 +78,7 @@ func (b *StszBox) GetSampleSize(i int) uint32 {
 	return b.SampleSize[i-1]
 }
 
+// Encode encodes
 func (b *StszBox) Encode(w io.Writer) error {
 	err := EncodeHeader(b, w)
 	if err != nil {

@@ -10,7 +10,7 @@ import "io"
 //
 // It is not read, only the io.Reader is stored, and will be used to Encode (io.Copy) the box to a io.Writer.
 type MdatBox struct {
-	ContentSize uint32
+	ContentSize uint64
 	r           io.Reader
 }
 

@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Media Header Box (mdhd - mandatory)
+// MdhdBox - Media Header Box (mdhd - mandatory)
 //
 // Contained in : Media Box (mdia)
 //
@@ -18,42 +18,58 @@ import (
 type MdhdBox struct {
 	Version          byte
 	Flags            [3]byte
-	CreationTime     uint32
-	ModificationTime uint32
+	CreationTime     uint64
+	ModificationTime uint64
 	Timescale        uint32
-	Duration         uint32
+	Duration         uint64
 	Language         uint16
 }
 
+// DecodeMdhd decodes mdhd
 func DecodeMdhd(r io.Reader) (Box, error) {
 	data, err := readAllO(r)
 	if err != nil {
 		return nil, err
 	}
-	return &MdhdBox{
-		Version:          data[0],
-		Flags:            [3]byte{data[1], data[2], data[3]},
-		CreationTime:     binary.BigEndian.Uint32(data[4:8]),
-		ModificationTime: binary.BigEndian.Uint32(data[8:12]),
-		Timescale:        binary.BigEndian.Uint32(data[12:16]),
-		Duration:         binary.BigEndian.Uint32(data[16:20]),
-		Language:         binary.BigEndian.Uint16(data[20:22]),
-	}, nil
+	mdhd := &MdhdBox{
+		Version: data[0],
+		Flags:   [3]byte{data[1], data[2], data[3]},
+	}
+	if mdhd.Version == 1 {
+		mdhd.CreationTime = binary.BigEndian.Uint64(data[4:12])
+		mdhd.ModificationTime = binary.BigEndian.Uint64(data[12:20])
+		mdhd.Timescale = binary.BigEndian.Uint32(data[20:24])
+		mdhd.Duration = binary.BigEndian.Uint64(data[24:32])
+		mdhd.Language = binary.BigEndian.Uint16(data[32:34])
+	} else {
+		mdhd.Version = 0
+		mdhd.CreationTime = uint64(binary.BigEndian.Uint32(data[4:8]))
+		mdhd.ModificationTime = uint64(binary.BigEndian.Uint32(data[8:12]))
+		mdhd.Timescale = binary.BigEndian.Uint32(data[12:16])
+		mdhd.Duration = uint64(binary.BigEndian.Uint32(data[16:20]))
+		mdhd.Language = binary.BigEndian.Uint16(data[20:22])
+	}
+
+	return mdhd, nil
 }
 
+// Type returns mdhd
 func (b *MdhdBox) Type() string {
 	return "mdhd"
 }
 
+// Size returns the size of the mdhd
 func (b *MdhdBox) Size() int {
-	return BoxHeaderSize + 24
+	return BoxHeaderSize + 24 + int(b.Version*24)
 }
 
+// Dump dumps the mdhd
 func (b *MdhdBox) Dump() {
-	fmt.Printf("Media Header:\n Timescale: %d units/sec\n Duration: %d units (%s)\n", b.Timescale, b.Duration, time.Duration(b.Duration/b.Timescale)*time.Second)
+	fmt.Printf("Media Header:\n Timescale: %d units/sec\n Duration: %d units (%s)\n", b.Timescale, b.Duration, time.Duration(b.Duration/uint64(b.Timescale))*time.Second)
 
 }
 
+// Encode encodes
 func (b *MdhdBox) Encode(w io.Writer) error {
 	err := EncodeHeader(b, w)
 	if err != nil {
@@ -62,11 +78,19 @@ func (b *MdhdBox) Encode(w io.Writer) error {
 	buf := makebuf(b)
 	buf[0] = b.Version
 	buf[1], buf[2], buf[3] = b.Flags[0], b.Flags[1], b.Flags[2]
-	binary.BigEndian.PutUint32(buf[4:], b.CreationTime)
-	binary.BigEndian.PutUint32(buf[8:], b.ModificationTime)
-	binary.BigEndian.PutUint32(buf[12:], b.Timescale)
-	binary.BigEndian.PutUint32(buf[16:], b.Duration)
-	binary.BigEndian.PutUint16(buf[20:], b.Language)
+	if b.Version == 1 {
+		binary.BigEndian.PutUint64(buf[4:], b.CreationTime)
+		binary.BigEndian.PutUint64(buf[12:], b.ModificationTime)
+		binary.BigEndian.PutUint32(buf[20:], b.Timescale)
+		binary.BigEndian.PutUint64(buf[24:], b.Duration)
+		binary.BigEndian.PutUint16(buf[32:], b.Language)
+	} else {
+		binary.BigEndian.PutUint32(buf[4:], uint32(b.CreationTime))
+		binary.BigEndian.PutUint32(buf[8:], uint32(b.ModificationTime))
+		binary.BigEndian.PutUint32(buf[12:], b.Timescale)
+		binary.BigEndian.PutUint32(buf[16:], uint32(b.Duration))
+		binary.BigEndian.PutUint16(buf[20:], b.Language)
+	}
 	_, err = w.Write(buf)
 	return err
 }

@@ -58,7 +58,12 @@ func (b *MoovBox) Size() int {
 }
 
 func (b *MoovBox) Dump() {
-	b.Mvhd.Dump()
+	if b == nil {
+		return
+	}
+	if b.Mvhd != nil {
+		b.Mvhd.Dump()
+	}
 	for i, t := range b.Trak {
 		fmt.Println("Track", i)
 		t.Dump()
