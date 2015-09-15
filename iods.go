@@ -13,8 +13,8 @@ type IodsBox struct {
 	notDecoded []byte
 }
 
-func DecodeIods(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeIods(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -27,8 +27,8 @@ func (b *IodsBox) Type() string {
 	return "iods"
 }
 
-func (b *IodsBox) Size() int {
-	return BoxHeaderSize + len(b.notDecoded)
+func (b *IodsBox) Size() uint64 {
+	return uint64(len(b.notDecoded))
 }
 
 func (b *IodsBox) Encode(w io.Writer) error {

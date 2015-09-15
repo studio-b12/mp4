@@ -17,8 +17,8 @@ type VmhdBox struct {
 	OpColor      [3]uint16
 }
 
-func DecodeVmhd(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeVmhd(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -37,8 +37,8 @@ func (b *VmhdBox) Type() string {
 	return "vmhd"
 }
 
-func (b *VmhdBox) Size() int {
-	return BoxHeaderSize + 12
+func (b *VmhdBox) Size() uint64 {
+	return 12
 }
 
 func (b *VmhdBox) Encode(w io.Writer) error {

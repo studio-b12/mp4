@@ -15,8 +15,8 @@ type MdiaBox struct {
 	Minf *MinfBox
 }
 
-func DecodeMdia(r io.Reader) (Box, error) {
-	l, err := DecodeContainer(r)
+func DecodeMdia(r io.ReadSeeker, size uint64) (Box, error) {
+	l, err := DecodeContainer(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -40,15 +40,15 @@ func (b *MdiaBox) Type() string {
 	return "mdia"
 }
 
-func (b *MdiaBox) Size() int {
-	sz := b.Mdhd.Size()
+func (b *MdiaBox) Size() uint64 {
+	sz := AddHeaderSize(b.Mdhd.Size())
 	if b.Hdlr != nil {
-		sz += b.Hdlr.Size()
+		sz += AddHeaderSize(b.Hdlr.Size())
 	}
 	if b.Minf != nil {
-		sz += b.Minf.Size()
+		sz += AddHeaderSize(b.Minf.Size())
 	}
-	return sz + BoxHeaderSize
+	return sz
 }
 
 func (b *MdiaBox) Dump() {

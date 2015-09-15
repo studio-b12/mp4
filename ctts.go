@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-// Composition Time to Sample Box (ctts - optional)
+// CttsBox - Composition Time to Sample Box (ctts - optional)
 //
 // Contained in: Sample Table Box (stbl)
 //
@@ -17,8 +17,8 @@ type CttsBox struct {
 	SampleOffset []uint32 // int32 for version 1
 }
 
-func DecodeCtts(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeCtts(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 
 	if err != nil {
 		return nil, err
@@ -40,17 +40,19 @@ func DecodeCtts(r io.Reader) (Box, error) {
 	return b, nil
 }
 
+// Type returns ctts
 func (b *CttsBox) Type() string {
 	return "ctts"
 }
 
-func (b *CttsBox) Size() int {
-	return BoxHeaderSize + 8 + len(b.SampleCount)*8
+// Size returns the size of ctts
+func (b *CttsBox) Size() uint64 {
+	return uint64(8 + len(b.SampleCount)*8)
 }
 
+// Encode encodes
 func (b *CttsBox) Encode(w io.Writer) error {
-	err := EncodeHeader(b, w)
-	if err != nil {
+	if err := EncodeHeader(b, w); err != nil {
 		return err
 	}
 	buf := makebuf(b)
@@ -61,6 +63,6 @@ func (b *CttsBox) Encode(w io.Writer) error {
 		binary.BigEndian.PutUint32(buf[8+8*i:], b.SampleCount[i])
 		binary.BigEndian.PutUint32(buf[12+8*i:], b.SampleOffset[i])
 	}
-	_, err = w.Write(buf)
+	_, err := w.Write(buf)
 	return err
 }

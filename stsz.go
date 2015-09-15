@@ -25,8 +25,8 @@ type StszBox struct {
 }
 
 // DecodeStsz - decodes
-func DecodeStsz(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeStsz(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 
 	if err != nil {
 		return nil, err
@@ -57,8 +57,8 @@ func (b *StszBox) Type() string {
 }
 
 // Size returns the size of the box
-func (b *StszBox) Size() int {
-	return BoxHeaderSize + 12 + len(b.SampleSize)*4
+func (b *StszBox) Size() uint64 {
+	return uint64(12 + len(b.SampleSize)*4)
 }
 
 // Dump dumps

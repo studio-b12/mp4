@@ -18,8 +18,8 @@ type DrefBox struct {
 	notDecoded []byte
 }
 
-func DecodeDref(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeDref(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -34,8 +34,8 @@ func (b *DrefBox) Type() string {
 	return "dref"
 }
 
-func (b *DrefBox) Size() int {
-	return BoxHeaderSize + 4 + len(b.notDecoded)
+func (b *DrefBox) Size() uint64 {
+	return uint64(4 + len(b.notDecoded))
 }
 
 func (b *DrefBox) Encode(w io.Writer) error {

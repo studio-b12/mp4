@@ -11,8 +11,8 @@ type UdtaBox struct {
 	Chpl *ChplBox
 }
 
-func DecodeUdta(r io.Reader) (Box, error) {
-	l, err := DecodeContainer(r)
+func DecodeUdta(r io.ReadSeeker, size uint64) (Box, error) {
+	l, err := DecodeContainer(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -36,16 +36,16 @@ func (b *UdtaBox) Type() string {
 	return "udta"
 }
 
-func (b *UdtaBox) Size() int {
-	sz := BoxHeaderSize
+func (b *UdtaBox) Size() uint64 {
+	var sz uint64
 	if b.Meta != nil {
-		sz += b.Meta.Size()
+		sz += AddHeaderSize(b.Meta.Size())
 	}
 	if b.Name != nil {
-		sz += b.Name.Size()
+		sz += AddHeaderSize(b.Name.Size())
 	}
 	if b.Chpl != nil {
-		sz += b.Chpl.Size()
+		sz += AddHeaderSize(b.Chpl.Size())
 	}
 	return sz
 }

@@ -11,20 +11,21 @@ type FreeBox struct {
 	notDecoded []byte
 }
 
-func DecodeFree(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeFree(r io.ReadSeeker, size uint64) (Box, error) {
+	// !TODO check is seek is enough
+	data, err := read(r, size)
 	if err != nil {
 		return nil, err
 	}
-	return &FreeBox{data}, nil
+	return &FreeBox{notDecoded: data}, nil
 }
 
 func (b *FreeBox) Type() string {
 	return "free"
 }
 
-func (b *FreeBox) Size() int {
-	return BoxHeaderSize + len(b.notDecoded)
+func (b *FreeBox) Size() uint64 {
+	return uint64(len(b.notDecoded))
 }
 
 func (b *FreeBox) Encode(w io.Writer) error {

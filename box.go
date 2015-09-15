@@ -5,23 +5,22 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
-)
-
-const (
-	BoxHeaderSize = 8
 )
 
 var (
-	ErrUnknownBoxType  = errors.New("unknown box type")
+	// ErrUnknownBoxType is for unknown box types
+	ErrUnknownBoxType = errors.New("unknown box type")
+	// ErrTruncatedHeader is when a head gets truncated
 	ErrTruncatedHeader = errors.New("truncated header")
-	ErrBadFormat       = errors.New("bad format")
+	// ErrBadFormat is for bad format
+	ErrBadFormat = errors.New("bad format")
+	errSmallRead = errors.New("read less than expected")
 )
 
-var decoders map[string]BoxDecoder
+var decoders map[string]boxDecoder
 
 func init() {
-	decoders = map[string]BoxDecoder{
+	decoders = map[string]boxDecoder{
 		"ftyp": DecodeFtyp,
 		"moov": DecodeMoov,
 		"mvhd": DecodeMvhd,
@@ -57,66 +56,26 @@ func init() {
 		"tref": DecodeTref,
 		"gmhd": DecodeGmhd,
 		"chpl": DecodeChpl,
+		"co64": DecodeCo64,
 	}
 }
 
-// The header of a box
-type BoxHeader struct {
-	Type string
-	Size uint64
-}
-
-// DecodeHeader decodes a box header (size + box type)
-func DecodeHeader(r io.Reader) (BoxHeader, error) {
-	buf := make([]byte, BoxHeaderSize)
-	n, err := r.Read(buf)
-	if err != nil {
-		return BoxHeader{}, err
-	}
-	if n != BoxHeaderSize {
-		return BoxHeader{}, ErrTruncatedHeader
-	}
-	typeName := string(buf[4:8])
-	size := uint64(binary.BigEndian.Uint32(buf[0:4]))
-	if size == 1 { // 64 bit size
-		buf = make([]byte, 8)
-		n, err := r.Read(buf)
-		if err != nil {
-			return BoxHeader{}, err
-		}
-		if n != 8 {
-			return BoxHeader{}, ErrTruncatedHeader
-		}
-		size = binary.BigEndian.Uint64(buf[0:8])
-	}
-	return BoxHeader{typeName, size}, nil
-}
-
-// EncodeHeader encodes a box header to a writer
-func EncodeHeader(b Box, w io.Writer) error {
-	buf := make([]byte, BoxHeaderSize)
-	binary.BigEndian.PutUint32(buf, uint32(b.Size()))
-	strtobuf(buf[4:], b.Type(), 4)
-	_, err := w.Write(buf)
-	return err
-}
-
-// A box
+// Box an atom
 type Box interface {
 	Type() string
-	Size() int
+	Size() uint64
 	Encode(w io.Writer) error
 }
 
-type BoxDecoder func(r io.Reader) (Box, error)
+type boxDecoder func(r io.ReadSeeker, size uint64) (Box, error)
 
 // DecodeBox decodes a box
-func DecodeBox(h BoxHeader, r io.Reader) (Box, error) {
+func DecodeBox(h BoxHeader, r io.ReadSeeker) (Box, error) {
 	d := decoders[h.Type]
 	if d == nil {
-		return nil, ErrUnknownBoxType
+		d = DecodeUni(h).Decode
 	}
-	b, err := d(io.LimitReader(r, int64(h.Size-BoxHeaderSize)))
+	b, err := d(r, RemoveHeaderSize(h.Size))
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +83,7 @@ func DecodeBox(h BoxHeader, r io.Reader) (Box, error) {
 }
 
 // DecodeContainer decodes a container box
-func DecodeContainer(r io.Reader) ([]Box, error) {
+func DecodeContainer(r io.ReadSeeker, size uint64) ([]Box, error) {
 	l := []Box{}
 	for {
 		h, err := DecodeHeader(r)
@@ -139,10 +98,14 @@ func DecodeContainer(r io.Reader) ([]Box, error) {
 			return l, err
 		}
 		l = append(l, b)
+		size -= h.Size
+		if size == 0 {
+			return l, nil
+		}
 	}
 }
 
-// An 8.8 fixed point number
+// Fixed16 is 8.8 fixed point number
 type Fixed16 uint16
 
 func (f Fixed16) String() string {
@@ -157,7 +120,7 @@ func putFixed16(bytes []byte, i Fixed16) {
 	binary.BigEndian.PutUint16(bytes, uint16(i))
 }
 
-// A 16.16 fixed point number
+// Fixed32 is 16.16 fixed point number
 type Fixed32 uint32
 
 func (f Fixed32) String() string {
@@ -180,16 +143,16 @@ func strtobuf(out []byte, str string, l int) {
 		copy(out, in[0:l])
 	}
 }
-
 func makebuf(b Box) []byte {
-	return make([]byte, b.Size()-BoxHeaderSize)
+	return make([]byte, b.Size())
 }
 
-func readAllO(r io.Reader) ([]byte, error) {
-	if lr, ok := r.(*io.LimitedReader); ok {
-		buf := make([]byte, lr.N)
-		_, err := io.ReadFull(lr, buf)
-		return buf, err
+func read(r io.Reader, size uint64) ([]byte, error) {
+	var buf = make([]byte, size)
+	if readSize, err := r.Read(buf); err != nil && err != io.EOF {
+		return nil, err
+	} else if readSize != int(size) {
+		return nil, errSmallRead
 	}
-	return ioutil.ReadAll(r)
+	return buf, nil
 }

@@ -13,8 +13,8 @@ type EdtsBox struct {
 	Elst *ElstBox
 }
 
-func DecodeEdts(r io.Reader) (Box, error) {
-	l, err := DecodeContainer(r)
+func DecodeEdts(r io.ReadSeeker, size uint64) (Box, error) {
+	l, err := DecodeContainer(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -34,8 +34,8 @@ func (b *EdtsBox) Type() string {
 	return "edts"
 }
 
-func (b *EdtsBox) Size() int {
-	return BoxHeaderSize + b.Elst.Size()
+func (b *EdtsBox) Size() uint64 {
+	return AddHeaderSize(b.Elst.Size())
 }
 
 func (b *EdtsBox) Dump() {

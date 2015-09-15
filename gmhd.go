@@ -11,8 +11,8 @@ type GmhdBox struct {
 	notDecoded []byte
 }
 
-func DecodeGmhd(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeGmhd(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -25,8 +25,8 @@ func (b *GmhdBox) Type() string {
 	return "gmhd"
 }
 
-func (b *GmhdBox) Size() int {
-	return BoxHeaderSize + len(b.notDecoded)
+func (b *GmhdBox) Size() uint64 {
+	return uint64(len(b.notDecoded))
 }
 
 func (b *GmhdBox) Encode(w io.Writer) error {

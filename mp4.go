@@ -23,15 +23,18 @@ type MP4 struct {
 	boxes []Box
 }
 
-// Decode decodes a media from a Reader
-func Decode(r io.Reader) (*MP4, error) {
+// Decode decodes a media from a ReadSeeker
+func Decode(r io.ReadSeeker) (*MP4, error) {
 	v := &MP4{
 		boxes: []Box{},
 	}
-LoopBoxes:
 	for {
 		h, err := DecodeHeader(r)
 		if err != nil {
+			if err == io.EOF {
+				return v, nil
+
+			}
 			return nil, err
 		}
 		box, err := DecodeBox(h, r)
@@ -45,8 +48,23 @@ LoopBoxes:
 			v.Moov = box.(*MoovBox)
 		case "mdat":
 			v.Mdat = box.(*MdatBox)
-			v.Mdat.ContentSize = h.Size - BoxHeaderSize
-			break LoopBoxes
+			var offset uint64 = 0
+			for _, box := range v.boxes {
+				offset += AddHeaderSize(box.Size())
+			}
+			if v.Ftyp != nil {
+				offset += AddHeaderSize(v.Ftyp.Size())
+			}
+			if v.Moov != nil {
+				offset += AddHeaderSize(v.Moov.Size())
+			}
+			v.Mdat.Offset = offset + HeaderSizeFor(v.Mdat.ContentSize)
+			if v.Moov == nil { // keep looking
+				r.Seek(int64(v.Mdat.ContentSize), 1)
+			} else { // we are done
+				return v, nil
+			}
+
 		default:
 			v.boxes = append(v.boxes, box)
 		}
@@ -88,13 +106,13 @@ func (m *MP4) Encode(w io.Writer) error {
 	return nil
 }
 
-func (m *MP4) Size() (size int) {
-	size += m.Ftyp.Size()
-	size += m.Moov.Size()
-	size += m.Mdat.Size()
+func (m *MP4) Size() (size uint64) {
+	size += AddHeaderSize(m.Ftyp.Size())
+	size += AddHeaderSize(m.Moov.Size())
+	size += AddHeaderSize(m.Mdat.Size())
 
 	for _, b := range m.Boxes() {
-		size += b.Size()
+		size += AddHeaderSize(b.Size())
 	}
 
 	return

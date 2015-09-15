@@ -46,8 +46,8 @@ func (f *noopFilter) WriteTo(w io.Writer) (n int64, err error) {
 		return
 	}
 
-	n += mp4.BoxHeaderSize
-	nn, err = io.Copy(w, f.m.Mdat.Reader())
+	n += int64(mp4.HeaderSizeFor(f.m.Mdat.Size()))
+	nn, err = io.Copy(w, f.m.Mdat.ReadSeeker())
 	n += nn
 
 	return

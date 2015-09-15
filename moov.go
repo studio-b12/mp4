@@ -1,7 +1,6 @@
 package mp4
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 )
@@ -18,8 +17,8 @@ type MoovBox struct {
 	Udta *UdtaBox
 }
 
-func DecodeMoov(r io.Reader) (Box, error) {
-	l, err := DecodeContainer(bufio.NewReaderSize(r, 512*1024))
+func DecodeMoov(r io.ReadSeeker, size uint64) (Box, error) {
+	l, err := DecodeContainer(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -43,18 +42,21 @@ func (b *MoovBox) Type() string {
 	return "moov"
 }
 
-func (b *MoovBox) Size() int {
-	sz := b.Mvhd.Size()
+func (b *MoovBox) Size() uint64 {
+	var sz uint64 = 0
+	if b.Mvhd != nil {
+		sz = AddHeaderSize(b.Mvhd.Size())
+	}
 	if b.Iods != nil {
-		sz += b.Iods.Size()
+		sz += AddHeaderSize(b.Iods.Size())
 	}
 	for _, t := range b.Trak {
-		sz += t.Size()
+		sz += AddHeaderSize(t.Size())
 	}
 	if b.Udta != nil {
-		sz += b.Udta.Size()
+		sz += AddHeaderSize(b.Udta.Size())
 	}
-	return sz + BoxHeaderSize
+	return sz
 }
 
 func (b *MoovBox) Dump() {

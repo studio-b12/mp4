@@ -60,8 +60,8 @@ type clipFilter struct {
 	buffer []byte
 	chunks []chunk
 
-	m      *mp4.MP4
-	reader io.Reader
+	m          *mp4.MP4
+	readseeker io.ReadSeeker
 
 	end   time.Duration
 	begin time.Duration
@@ -145,8 +145,6 @@ func (f *clipFilter) Read(buf []byte) (n int, err error) {
 		}
 	}
 
-	s, seekable := f.reader.(io.ReadSeeker)
-
 	for f.firstChunk < len(f.chunks) && err != nil && len(buf) > 0 {
 		c := f.chunks[f.firstChunk]
 
@@ -156,10 +154,8 @@ func (f *clipFilter) Read(buf []byte) (n int, err error) {
 		}
 
 		realOffset := c.oldOffset + (f.offset - c.newOffset)
-		if seekable {
-			if _, err = s.Seek(realOffset, os.SEEK_SET); err != nil {
-				return
-			}
+		if _, err = f.readseeker.Seek(realOffset, os.SEEK_SET); err != nil {
+			return
 		}
 
 		can := int(c.size - (f.offset - c.newOffset))
@@ -168,7 +164,7 @@ func (f *clipFilter) Read(buf []byte) (n int, err error) {
 			can = len(buf)
 		}
 
-		nn, err = io.ReadFull(f.reader, buf[:can])
+		nn, err = io.ReadFull(f.readseeker, buf[:can])
 		f.offset += int64(nn)
 		n += nn
 		buf = buf[nn:]
@@ -186,18 +182,25 @@ func (f *clipFilter) Read(buf []byte) (n int, err error) {
 func (f *clipFilter) Filter() (err error) {
 	f.buildChunkList()
 
-	bsz := uint64(mp4.BoxHeaderSize)
-	bsz += uint64(f.m.Ftyp.Size())
-	bsz += uint64(f.m.Moov.Size())
+	bsz := mp4.HeaderSizeFor(f.chunksSize()) // !TODO bugy fix
+	bsz += mp4.AddHeaderSize(f.m.Ftyp.Size())
+	bsz += mp4.AddHeaderSize(f.m.Moov.Size())
 
 	for _, b := range f.m.Boxes() {
-		bsz += uint64(b.Size())
+		bsz += mp4.AddHeaderSize(b.Size())
 	}
 
 	// Update chunk offset
 	for _, t := range f.m.Moov.Trak {
-		for i := range t.Mdia.Minf.Stbl.Stco.ChunkOffset {
-			t.Mdia.Minf.Stbl.Stco.ChunkOffset[i] += uint32(bsz) // !TODO implement for co64
+		if t.Mdia.Minf.Stbl.Stco != nil {
+			for i := range t.Mdia.Minf.Stbl.Stco.ChunkOffset {
+				t.Mdia.Minf.Stbl.Stco.ChunkOffset[i] += uint32(bsz)
+			}
+		} else {
+
+			for i := range t.Mdia.Minf.Stbl.Co64.ChunkOffset {
+				t.Mdia.Minf.Stbl.Co64.ChunkOffset[i] += bsz
+			}
 		}
 	}
 
@@ -222,7 +225,7 @@ func (f *clipFilter) Filter() (err error) {
 
 	f.size = int64(f.m.Size())
 	f.buffer = Buffer.Bytes()
-	f.reader = f.m.Mdat.Reader()
+	f.readseeker = f.m.Mdat.ReadSeeker()
 	f.bufferLength = len(f.buffer)
 
 	f.compactChunks()
@@ -230,6 +233,14 @@ func (f *clipFilter) Filter() (err error) {
 	f.m = nil
 
 	return
+}
+
+func (f *clipFilter) chunksSize() uint64 {
+	var result int64
+	for _, chunk := range f.chunks {
+		result += chunk.size
+	}
+	return uint64(result)
 }
 
 func (f *clipFilter) compactChunks() {
@@ -262,18 +273,14 @@ func (f *clipFilter) WriteTo(w io.Writer) (n int64, err error) {
 	}
 
 	n += int64(nn)
-	s, seekable := f.reader.(io.Seeker)
-
 	for _, c := range f.chunks {
 		csize := int64(c.size)
 
-		if seekable {
-			if _, err = s.Seek(int64(c.oldOffset), os.SEEK_SET); err != nil {
-				return
-			}
+		if _, err = f.readseeker.Seek(int64(c.oldOffset), os.SEEK_SET); err != nil {
+			return
 		}
 
-		nnn, err = io.CopyN(w, f.reader, csize)
+		nnn, err = io.CopyN(w, f.readseeker, csize)
 		n += nnn
 		if err != nil {
 			return
@@ -317,7 +324,7 @@ func (f *clipFilter) WriteToN(dst io.Writer, size int64) (n int64, err error) {
 		}
 	}
 
-	s, seekable := f.reader.(io.ReadSeeker)
+	s, seekable := f.readseeker.(io.ReadSeeker)
 
 	for f.firstChunk < len(f.chunks) && err == nil && n < size {
 		c := f.chunks[f.firstChunk]
@@ -341,7 +348,7 @@ func (f *clipFilter) WriteToN(dst io.Writer, size int64) (n int64, err error) {
 			can = size - n
 		}
 
-		nnn, err = io.CopyN(dst, f.reader, can)
+		nnn, err = io.CopyN(dst, f.readseeker, can)
 		f.offset += nnn
 		n += nnn
 
@@ -361,7 +368,11 @@ func (f *clipFilter) buildChunkList() {
 	var samples, descriptionID, sample, current uint32
 
 	for _, t := range f.m.Moov.Trak {
-		sz += len(t.Mdia.Minf.Stbl.Stco.ChunkOffset)
+		if t.Mdia.Minf.Stbl.Stco != nil {
+			sz += len(t.Mdia.Minf.Stbl.Stco.ChunkOffset)
+		} else {
+			sz += len(t.Mdia.Minf.Stbl.Co64.ChunkOffset)
+		}
 	}
 
 	f.m.Mdat.ContentSize = 0
@@ -391,8 +402,11 @@ func (f *clipFilter) buildChunkList() {
 		cti := &ti[tnum]
 
 		newFirstChunk[tnum] = make([]uint32, 0, len(t.Mdia.Minf.Stbl.Stsc.FirstChunk))
-		newChunkOffset[tnum] = make([]uint32, 0, len(t.Mdia.Minf.Stbl.Stco.ChunkOffset))
-		newChunkOffset64[tnum] = make([]uint64, 0, len(t.Mdia.Minf.Stbl.Stco.ChunkOffset)) // for co64
+		if t.Mdia.Minf.Stbl.Stco != nil {
+			newChunkOffset[tnum] = make([]uint32, 0, len(t.Mdia.Minf.Stbl.Stco.ChunkOffset))
+		} else {
+			newChunkOffset64[tnum] = make([]uint64, 0, len(t.Mdia.Minf.Stbl.Co64.ChunkOffset)) // for co64
+		}
 		newSamplesPerChunk[tnum] = make([]uint32, 0, len(t.Mdia.Minf.Stbl.Stsc.SamplesPerChunk))
 		newSampleDescriptionID[tnum] = make([]uint32, 0, len(t.Mdia.Minf.Stbl.Stsc.SampleDescriptionID))
 
@@ -421,10 +435,17 @@ func (f *clipFilter) buildChunkList() {
 		cti := &ti[tnum]
 
 		stco := t.Mdia.Minf.Stbl.Stco
+		co64 := t.Mdia.Minf.Stbl.Co64
 		stsc := t.Mdia.Minf.Stbl.Stsc
 		stts := t.Mdia.Minf.Stbl.Stts
+		var length int
+		if stco != nil {
+			length = len(stco.ChunkOffset)
+		} else {
+			length = len(co64.ChunkOffset)
+		}
 
-		for i := range stco.ChunkOffset {
+		for i := 0; length > i; i++ {
 			if cti.sci < len(stsc.FirstChunk)-1 && i+1 >= int(stsc.FirstChunk[cti.sci+1]) {
 				cti.sci++
 			}
@@ -447,7 +468,7 @@ func (f *clipFilter) buildChunkList() {
 			break
 		}
 
-		if cti.currentChunk == len(stco.ChunkOffset)-1 {
+		if cti.currentChunk == length-1 {
 			cnt--
 			cti.rebuilded = true
 		}
@@ -455,21 +476,33 @@ func (f *clipFilter) buildChunkList() {
 
 	for cnt > 1 {
 		mv = 0
+		var is32bit bool
 
 		for tnum, t := range f.m.Moov.Trak {
 			if ti[tnum].rebuilded {
 				continue
 			}
 
-			if mv == 0 || uint64(t.Mdia.Minf.Stbl.Stco.ChunkOffset[ti[tnum].currentChunk]) < mv {
+			var currentOffest uint64
+			if t.Mdia.Minf.Stbl.Stco != nil {
+				currentOffest = uint64(t.Mdia.Minf.Stbl.Stco.ChunkOffset[ti[tnum].currentChunk])
+				is32bit = true
+			} else {
+				currentOffest = t.Mdia.Minf.Stbl.Co64.ChunkOffset[ti[tnum].currentChunk]
+			}
+			if mv == 0 || currentOffest < mv {
 				mt = tnum
-				mv = uint64(t.Mdia.Minf.Stbl.Stco.ChunkOffset[ti[tnum].currentChunk])
+				mv = currentOffest
 			}
 		}
 
 		cti := &ti[mt]
-		newChunkOffset[mt] = append(newChunkOffset[mt], uint32(off))
-		newChunkOffset64[mt] = append(newChunkOffset64[mt], off)
+
+		if is32bit {
+			newChunkOffset[mt] = append(newChunkOffset[mt], uint32(off))
+		} else {
+			newChunkOffset64[mt] = append(newChunkOffset64[mt], off)
+		}
 
 		stsc := f.m.Moov.Trak[mt].Mdia.Minf.Stbl.Stsc
 		stsz := f.m.Moov.Trak[mt].Mdia.Minf.Stbl.Stsz
@@ -509,7 +542,14 @@ func (f *clipFilter) buildChunkList() {
 		// Go in next chunk
 		cti.currentChunk++
 
-		if cti.currentChunk == len(f.m.Moov.Trak[mt].Mdia.Minf.Stbl.Stco.ChunkOffset) {
+		var l int
+		if is32bit {
+			l = len(f.m.Moov.Trak[mt].Mdia.Minf.Stbl.Stco.ChunkOffset)
+		} else {
+			l = len(f.m.Moov.Trak[mt].Mdia.Minf.Stbl.Co64.ChunkOffset)
+
+		}
+		if cti.currentChunk == l {
 			cnt--
 			cti.rebuilded = true
 		}
@@ -518,6 +558,7 @@ func (f *clipFilter) buildChunkList() {
 	for tnum, t := range f.m.Moov.Trak {
 		cti := &ti[tnum]
 		stco := t.Mdia.Minf.Stbl.Stco
+		co64 := t.Mdia.Minf.Stbl.Co64
 		stsc := t.Mdia.Minf.Stbl.Stsc
 		stsz := t.Mdia.Minf.Stbl.Stsz
 		stts := t.Mdia.Minf.Stbl.Stts
@@ -532,9 +573,23 @@ func (f *clipFilter) buildChunkList() {
 		}
 
 		if !cti.rebuilded {
-			for i := cti.currentChunk; i < len(stco.ChunkOffset); i++ {
-				newChunkOffset[tnum] = append(newChunkOffset[tnum], uint32(off))
-				newChunkOffset64[tnum] = append(newChunkOffset64[tnum], off)
+			var addNewChunkOffest func(undex int, off uint64)
+			var chunkOffsetLength int
+			if stco != nil {
+				addNewChunkOffest = func(index int, off uint64) {
+					newChunkOffset[index] = append(newChunkOffset[index], uint32(off))
+				}
+
+				chunkOffsetLength = len(stco.ChunkOffset)
+			} else {
+				addNewChunkOffest = func(index int, off uint64) {
+					newChunkOffset64[index] = append(newChunkOffset64[index], off)
+				}
+
+				chunkOffsetLength = len(co64.ChunkOffset)
+			}
+			for i := cti.currentChunk; i < chunkOffsetLength; i++ {
+				addNewChunkOffest(tnum, off)
 
 				if cti.sci < len(stsc.FirstChunk)-1 && cti.currentChunk+1 >= int(stsc.FirstChunk[cti.sci+1]) {
 					cti.sci++
@@ -553,10 +608,13 @@ func (f *clipFilter) buildChunkList() {
 				off += size
 				f.m.Mdat.ContentSize += size
 
-				f.chunks = append(f.chunks, chunk{
-					size:      int64(size),
-					oldOffset: int64(stco.ChunkOffset[i]),
-				})
+				newChunk := chunk{size: int64(size)}
+				if stco != nil {
+					newChunk.oldOffset = int64(stco.ChunkOffset[i])
+				} else {
+					newChunk.oldOffset = int64(co64.ChunkOffset[i])
+				}
+				f.chunks = append(f.chunks, newChunk)
 
 				if samples != firstChunkSamples[tnum] || descriptionID != firstChunkDescriptionID[tnum] {
 					newFirstChunk[tnum] = append(newFirstChunk[tnum], uint32(i))
@@ -679,10 +737,11 @@ func (f *clipFilter) buildChunkList() {
 			ctts.SampleOffset = newSampleOffset
 		}
 
-		// co64 ?
-
-		t.Mdia.Minf.Stbl.Stco.ChunkOffset = newChunkOffset[tnum]
-		// t.Mdia.Minf.Stbl.Co64.ChunkOffset = newChunkOffset64[tnum] // implement
+		if t.Mdia.Minf.Stbl.Stco != nil {
+			t.Mdia.Minf.Stbl.Stco.ChunkOffset = newChunkOffset[tnum]
+		} else {
+			t.Mdia.Minf.Stbl.Co64.ChunkOffset = newChunkOffset64[tnum]
+		}
 
 		t.Mdia.Minf.Stbl.Stsc.FirstChunk = newFirstChunk[tnum]
 		t.Mdia.Minf.Stbl.Stsc.SamplesPerChunk = newSamplesPerChunk[tnum]

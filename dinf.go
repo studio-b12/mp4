@@ -11,8 +11,8 @@ type DinfBox struct {
 	Dref *DrefBox
 }
 
-func DecodeDinf(r io.Reader) (Box, error) {
-	l, err := DecodeContainer(r)
+func DecodeDinf(r io.ReadSeeker, size uint64) (Box, error) {
+	l, err := DecodeContainer(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -32,13 +32,12 @@ func (b *DinfBox) Type() string {
 	return "dinf"
 }
 
-func (b *DinfBox) Size() int {
-	return BoxHeaderSize + b.Dref.Size()
+func (b *DinfBox) Size() uint64 {
+	return AddHeaderSize(b.Dref.Size())
 }
 
 func (b *DinfBox) Encode(w io.Writer) error {
-	err := EncodeHeader(b, w)
-	if err != nil {
+	if err := EncodeHeader(b, w); err != nil {
 		return err
 	}
 	return b.Dref.Encode(w)

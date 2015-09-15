@@ -19,8 +19,8 @@ type StssBox struct {
 	SampleNumber []uint32
 }
 
-func DecodeStss(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeStss(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 
 	if err != nil {
 		return nil, err
@@ -44,8 +44,8 @@ func (b *StssBox) Type() string {
 	return "stss"
 }
 
-func (b *StssBox) Size() int {
-	return BoxHeaderSize + 8 + len(b.SampleNumber)*4
+func (b *StssBox) Size() uint64 {
+	return uint64(8 + len(b.SampleNumber)*4)
 }
 
 func (b *StssBox) Dump() {

@@ -16,8 +16,8 @@ type MinfBox struct {
 	Gmhd *GmhdBox
 }
 
-func DecodeMinf(r io.Reader) (Box, error) {
-	l, err := DecodeContainer(r)
+func DecodeMinf(r io.ReadSeeker, size uint64) (Box, error) {
+	l, err := DecodeContainer(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -45,25 +45,25 @@ func (b *MinfBox) Type() string {
 	return "minf"
 }
 
-func (b *MinfBox) Size() int {
-	sz := 0
+func (b *MinfBox) Size() uint64 {
+	var sz uint64 = 0
 	if b.Vmhd != nil {
-		sz += b.Vmhd.Size()
+		sz += AddHeaderSize(b.Vmhd.Size())
 	}
 	if b.Smhd != nil {
-		sz += b.Smhd.Size()
+		sz += AddHeaderSize(b.Smhd.Size())
 	}
-	sz += b.Stbl.Size()
+	sz += AddHeaderSize(b.Stbl.Size())
 	if b.Dinf != nil {
-		sz += b.Dinf.Size()
+		sz += AddHeaderSize(b.Dinf.Size())
 	}
 	if b.Hdlr != nil {
-		sz += b.Hdlr.Size()
+		sz += AddHeaderSize(b.Hdlr.Size())
 	}
 	if b.Gmhd != nil {
-		sz += b.Gmhd.Size()
+		sz += AddHeaderSize(b.Gmhd.Size())
 	}
-	return sz + BoxHeaderSize
+	return sz
 }
 
 func (b *MinfBox) Dump() {

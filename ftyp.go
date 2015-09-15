@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-// File Type Box (ftyp - mandatory)
+// FtypBox - File Type Box (ftyp - mandatory)
 //
 // Status: decoded
 type FtypBox struct {
@@ -14,19 +14,20 @@ type FtypBox struct {
 	CompatibleBrands []string
 }
 
-func DecodeFtyp(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+// Decode decodes the ftyp box
+func DecodeFtyp(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 	if err != nil {
 		return nil, err
 	}
 	b := &FtypBox{
-		MajorBrand:       string(data[0:4]),
-		MinorVersion:     data[4:8],
-		CompatibleBrands: []string{},
+		MajorBrand:   string(data[0:4]),
+		MinorVersion: data[4:8],
 	}
 	if len(data) > 8 {
+		b.CompatibleBrands = make([]string, len(data)-8)
 		for i := 8; i < len(data); i += 4 {
-			b.CompatibleBrands = append(b.CompatibleBrands, string(data[i:i+4]))
+			b.CompatibleBrands[(i-8)/4] = string(data[i : i+4])
 		}
 	}
 	return b, nil
@@ -36,8 +37,8 @@ func (b *FtypBox) Type() string {
 	return "ftyp"
 }
 
-func (b *FtypBox) Size() int {
-	return BoxHeaderSize + 8 + 4*len(b.CompatibleBrands)
+func (b *FtypBox) Size() uint64 {
+	return uint64(8 + 4*len(b.CompatibleBrands))
 }
 
 func (b *FtypBox) Dump() {

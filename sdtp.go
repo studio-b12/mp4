@@ -11,8 +11,8 @@ type SdtpBox struct {
 	notDecoded []byte
 }
 
-func DecodeSdtp(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeSdtp(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -25,8 +25,8 @@ func (b *SdtpBox) Type() string {
 	return "sdtp"
 }
 
-func (b *SdtpBox) Size() int {
-	return BoxHeaderSize + len(b.notDecoded)
+func (b *SdtpBox) Size() uint64 {
+	return uint64(len(b.notDecoded))
 }
 
 func (b *SdtpBox) Encode(w io.Writer) error {

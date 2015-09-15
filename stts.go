@@ -23,8 +23,8 @@ type SttsBox struct {
 	SampleTimeDelta []uint32
 }
 
-func DecodeStts(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeStts(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 
 	if err != nil {
 		return nil, err
@@ -50,8 +50,8 @@ func (b *SttsBox) Type() string {
 	return "stts"
 }
 
-func (b *SttsBox) Size() int {
-	return BoxHeaderSize + 8 + len(b.SampleCount)*8
+func (b *SttsBox) Size() uint64 {
+	return uint64(8 + len(b.SampleCount)*8)
 }
 
 func (b *SttsBox) Dump() {

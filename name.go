@@ -11,8 +11,8 @@ type NameBox struct {
 	notDecoded []byte
 }
 
-func DecodeName(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeName(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -25,8 +25,8 @@ func (b *NameBox) Type() string {
 	return "name"
 }
 
-func (b *NameBox) Size() int {
-	return BoxHeaderSize + len(b.notDecoded)
+func (b *NameBox) Size() uint64 {
+	return uint64(len(b.notDecoded))
 }
 
 func (b *NameBox) Encode(w io.Writer) error {

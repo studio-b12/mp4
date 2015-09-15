@@ -26,8 +26,8 @@ type MdhdBox struct {
 }
 
 // DecodeMdhd decodes mdhd
-func DecodeMdhd(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeMdhd(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -59,8 +59,8 @@ func (b *MdhdBox) Type() string {
 }
 
 // Size returns the size of the mdhd
-func (b *MdhdBox) Size() int {
-	return BoxHeaderSize + 24 + int(b.Version*24)
+func (b *MdhdBox) Size() uint64 {
+	return uint64(24 + uint64(b.Version)*24)
 }
 
 // Dump dumps the mdhd

@@ -29,8 +29,9 @@ type TkhdBox struct {
 }
 
 // DecodeTkhd te
-func DecodeTkhd(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeTkhd(r io.ReadSeeker, size uint64) (Box, error) {
+	// !TODO use size to determine version
+	data, err := read(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -72,12 +73,11 @@ func (b *TkhdBox) Type() string {
 }
 
 // Size returns the size of the box
-func (b *TkhdBox) Size() int {
-	var fieldsSize = 84
+func (b *TkhdBox) Size() uint64 {
 	if b.Version == 1 {
-		fieldsSize = 96
+		return 96
 	}
-	return BoxHeaderSize + fieldsSize
+	return 84
 }
 
 // Encode encodes to the writer
@@ -96,13 +96,13 @@ func (b *TkhdBox) Encode(w io.Writer) error {
 		binary.BigEndian.PutUint32(buf[20:], b.TrackID)
 		// uint32 reserved
 		binary.BigEndian.PutUint64(buf[32:], b.Duration)
+		offset = 36
 	} else {
 		binary.BigEndian.PutUint64(buf[4:], b.CreationTime)
 		binary.BigEndian.PutUint64(buf[12:], b.ModificationTime)
 		binary.BigEndian.PutUint32(buf[20:], b.TrackID)
 		// uint32 reserved
 		binary.BigEndian.PutUint64(buf[32:], b.Duration)
-		offset = 36
 	}
 	offset += 8
 	binary.BigEndian.PutUint16(buf[offset:], b.Layer)

@@ -31,32 +31,41 @@ type MvhdBox struct {
 	Matrix           []byte
 }
 
+const (
+	mvhdSizeVersion0 = 100
+	mvhdSizeVersion1 = mvhdSizeVersion0 + 12
+)
+
 // DecodeMvhd - decodes
-func DecodeMvhd(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
-	if err != nil {
+func DecodeMvhd(r io.ReadSeeker, size uint64) (Box, error) {
+	// !TODO use size
+	var data = make([]byte, 4)
+	if _, err := r.Read(data); err != nil {
 		return nil, err
 	}
 	mvhd := &MvhdBox{
 		Version: data[0],
 		Flags:   [3]byte{data[1], data[2], data[3]},
 	}
-	var offset int
+
+	data = append(data, make([]byte, 96+(int(mvhd.Version)*12))...)
+	var offset = 20 + (int(mvhd.Version) * 12)
+	if _, err := r.Read(data[4:]); err != nil {
+		return nil, err
+	}
 	if mvhd.Version == 1 {
 		mvhd.CreationTime = binary.BigEndian.Uint64(data[4:12])
 		mvhd.ModificationTime = binary.BigEndian.Uint64(data[12:20])
 		mvhd.Timescale = binary.BigEndian.Uint32(data[20:24])
 		mvhd.Duration = binary.BigEndian.Uint64(data[24:32])
-		offset = 32
 	} else {
 		mvhd.CreationTime = uint64(binary.BigEndian.Uint32(data[4:8]))
 		mvhd.ModificationTime = uint64(binary.BigEndian.Uint32(data[8:12]))
 		mvhd.Timescale = binary.BigEndian.Uint32(data[12:16])
 		mvhd.Duration = uint64(binary.BigEndian.Uint32(data[16:20]))
-		offset = 20
 	}
 	mvhd.Rate = fixed32(data[offset : offset+4])
-	mvhd.Volume = fixed16(data[offset+4 : offset+5])
+	mvhd.Volume = fixed16(data[offset+4 : offset+6])
 	// bit(16) // 2
 	// unsigned int(32)[2] // 8
 	mvhd.Matrix = data[offset+16 : offset+52]
@@ -72,8 +81,11 @@ func (b *MvhdBox) Type() string {
 }
 
 // Size returns the size of the mvhd
-func (b *MvhdBox) Size() int {
-	return BoxHeaderSize + 100 + (int(b.Version) * 12)
+func (b *MvhdBox) Size() uint64 {
+	if b.Version == 1 {
+		return mvhdSizeVersion1
+	}
+	return mvhdSizeVersion0
 }
 
 // Dump dumps

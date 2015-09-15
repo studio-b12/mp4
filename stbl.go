@@ -2,7 +2,7 @@ package mp4
 
 import "io"
 
-// Sample Table Box (stbl - mandatory)
+// StblBox - Sample Table Box (stbl - mandatory)
 //
 // Contained in : Media Information Box (minf)
 //
@@ -16,11 +16,13 @@ type StblBox struct {
 	Stsc *StscBox
 	Stsz *StszBox
 	Stco *StcoBox
+	Co64 *Co64Box
 	Ctts *CttsBox
 }
 
-func DecodeStbl(r io.Reader) (Box, error) {
-	l, err := DecodeContainer(r)
+// DecodeStbl decodes stbl
+func DecodeStbl(r io.ReadSeeker, size uint64) (Box, error) {
+	l, err := DecodeContainer(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -39,6 +41,8 @@ func DecodeStbl(r io.Reader) (Box, error) {
 			s.Stsz = b.(*StszBox)
 		case "stco":
 			s.Stco = b.(*StcoBox)
+		case "co64":
+			s.Co64 = b.(*Co64Box)
 		case "ctts":
 			s.Ctts = b.(*CttsBox)
 		}
@@ -46,33 +50,39 @@ func DecodeStbl(r io.Reader) (Box, error) {
 	return s, nil
 }
 
+// Type returns stbl
 func (b *StblBox) Type() string {
 	return "stbl"
 }
 
-func (b *StblBox) Size() int {
-	sz := b.Stsd.Size()
+// Size returns size
+func (b *StblBox) Size() uint64 {
+	sz := AddHeaderSize(b.Stsd.Size())
 	if b.Stts != nil {
-		sz += b.Stts.Size()
+		sz += AddHeaderSize(b.Stts.Size())
 	}
 	if b.Stss != nil {
-		sz += b.Stss.Size()
+		sz += AddHeaderSize(b.Stss.Size())
 	}
 	if b.Stsc != nil {
-		sz += b.Stsc.Size()
+		sz += AddHeaderSize(b.Stsc.Size())
 	}
 	if b.Stsz != nil {
-		sz += b.Stsz.Size()
+		sz += AddHeaderSize(b.Stsz.Size())
 	}
 	if b.Stco != nil {
-		sz += b.Stco.Size()
+		sz += AddHeaderSize(b.Stco.Size())
+	}
+	if b.Co64 != nil {
+		sz += AddHeaderSize(b.Co64.Size())
 	}
 	if b.Ctts != nil {
-		sz += b.Ctts.Size()
+		sz += AddHeaderSize(b.Ctts.Size())
 	}
-	return sz + BoxHeaderSize
+	return sz
 }
 
+// Dump dumps
 func (b *StblBox) Dump() {
 	if b.Stsc != nil {
 		b.Stsc.Dump()
@@ -89,8 +99,12 @@ func (b *StblBox) Dump() {
 	if b.Stco != nil {
 		b.Stco.Dump()
 	}
+	if b.Co64 != nil {
+		b.Co64.Dump()
+	}
 }
 
+// Encode encodes
 func (b *StblBox) Encode(w io.Writer) error {
 	err := EncodeHeader(b, w)
 	if err != nil {
@@ -118,9 +132,16 @@ func (b *StblBox) Encode(w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	err = b.Stco.Encode(w)
-	if err != nil {
-		return err
+	if b.Stco != nil {
+		err = b.Stco.Encode(w)
+		if err != nil {
+			return err
+		}
+	} else {
+		err = b.Co64.Encode(w)
+		if err != nil {
+			return err
+		}
 	}
 	if b.Ctts != nil {
 		return b.Ctts.Encode(w)

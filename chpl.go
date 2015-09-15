@@ -11,8 +11,8 @@ type ChplBox struct {
 	notDecoded []byte
 }
 
-func DecodeChpl(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeChpl(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -25,8 +25,8 @@ func (b *ChplBox) Type() string {
 	return "chpl"
 }
 
-func (b *ChplBox) Size() int {
-	return BoxHeaderSize + len(b.notDecoded)
+func (b *ChplBox) Size() uint64 {
+	return uint64(len(b.notDecoded))
 }
 
 func (b *ChplBox) Encode(w io.Writer) error {

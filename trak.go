@@ -15,8 +15,8 @@ type TrakBox struct {
 	Tref *TrefBox
 }
 
-func DecodeTrak(r io.Reader) (Box, error) {
-	l, err := DecodeContainer(r)
+func DecodeTrak(r io.ReadSeeker, size uint64) (Box, error) {
+	l, err := DecodeContainer(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -44,19 +44,19 @@ func (b *TrakBox) Type() string {
 	return "trak"
 }
 
-func (b *TrakBox) Size() int {
-	sz := b.Tkhd.Size()
-	sz += b.Mdia.Size()
+func (b *TrakBox) Size() uint64 {
+	sz := AddHeaderSize(b.Tkhd.Size())
+	sz += AddHeaderSize(b.Mdia.Size())
 	if b.Edts != nil {
-		sz += b.Edts.Size()
+		sz += AddHeaderSize(b.Edts.Size())
 	}
 	if b.Udta != nil {
-		sz += b.Udta.Size()
+		sz += AddHeaderSize(b.Udta.Size())
 	}
 	if b.Tref != nil {
-		sz += b.Tref.Size()
+		sz += AddHeaderSize(b.Tref.Size())
 	}
-	return sz + BoxHeaderSize
+	return sz
 }
 
 func (b *TrakBox) Dump() {

@@ -22,8 +22,8 @@ type HdlrBox struct {
 	Name        string
 }
 
-func DecodeHdlr(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeHdlr(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -40,8 +40,8 @@ func (b *HdlrBox) Type() string {
 	return "hdlr"
 }
 
-func (b *HdlrBox) Size() int {
-	return BoxHeaderSize + 24 + len(b.Name)
+func (b *HdlrBox) Size() uint64 {
+	return uint64(24 + len(b.Name))
 }
 
 func (b *HdlrBox) Encode(w io.Writer) error {

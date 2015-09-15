@@ -13,8 +13,8 @@ type MetaBox struct {
 	notDecoded []byte
 }
 
-func DecodeMeta(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeMeta(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -29,8 +29,8 @@ func (b *MetaBox) Type() string {
 	return "meta"
 }
 
-func (b *MetaBox) Size() int {
-	return BoxHeaderSize + 4 + len(b.notDecoded)
+func (b *MetaBox) Size() uint64 {
+	return uint64(4 + len(b.notDecoded))
 }
 
 func (b *MetaBox) Encode(w io.Writer) error {

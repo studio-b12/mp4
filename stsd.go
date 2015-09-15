@@ -17,8 +17,8 @@ type StsdBox struct {
 	notDecoded []byte
 }
 
-func DecodeStsd(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeStsd(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -33,8 +33,8 @@ func (b *StsdBox) Type() string {
 	return "stsd"
 }
 
-func (b *StsdBox) Size() int {
-	return BoxHeaderSize + 4 + len(b.notDecoded)
+func (b *StsdBox) Size() uint64 {
+	return uint64(4 + len(b.notDecoded))
 }
 
 func (b *StsdBox) Encode(w io.Writer) error {

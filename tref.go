@@ -11,8 +11,8 @@ type TrefBox struct {
 	notDecoded []byte
 }
 
-func DecodeTref(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeTref(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -25,8 +25,8 @@ func (b *TrefBox) Type() string {
 	return "tref"
 }
 
-func (b *TrefBox) Size() int {
-	return BoxHeaderSize + len(b.notDecoded)
+func (b *TrefBox) Size() uint64 {
+	return uint64(len(b.notDecoded))
 }
 
 func (b *TrefBox) Encode(w io.Writer) error {

@@ -26,8 +26,8 @@ type StscBox struct {
 	SampleDescriptionID []uint32
 }
 
-func DecodeStsc(r io.Reader) (Box, error) {
-	data, err := readAllO(r)
+func DecodeStsc(r io.ReadSeeker, size uint64) (Box, error) {
+	data, err := read(r, size)
 
 	if err != nil {
 		return nil, err
@@ -55,8 +55,8 @@ func (b *StscBox) Type() string {
 	return "stsc"
 }
 
-func (b *StscBox) Size() int {
-	return BoxHeaderSize + 8 + len(b.FirstChunk)*12
+func (b *StscBox) Size() uint64 {
+	return uint64(8 + len(b.FirstChunk)*12)
 }
 
 func (b *StscBox) Dump() {
