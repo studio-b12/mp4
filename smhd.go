@@ -16,7 +16,7 @@ type SmhdBox struct {
 	Balance uint16 // should be int16
 }
 
-func DecodeSmhd(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeSmhd(r io.Reader, size uint64) (Box, error) {
 	data, err := read(r, size)
 	if err != nil {
 		return nil, err

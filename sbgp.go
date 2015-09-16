@@ -11,7 +11,7 @@ type SbgpBox struct {
 	notDecoded []byte
 }
 
-func DecodeSbgp(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeSbgp(r io.Reader, size uint64) (Box, error) {
 	data, err := read(r, size)
 	if err != nil {
 		return nil, err

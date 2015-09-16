@@ -13,7 +13,7 @@ type MetaBox struct {
 	notDecoded []byte
 }
 
-func DecodeMeta(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeMeta(r io.Reader, size uint64) (Box, error) {
 	data, err := read(r, size)
 	if err != nil {
 		return nil, err

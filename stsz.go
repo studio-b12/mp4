@@ -25,7 +25,7 @@ type StszBox struct {
 }
 
 // DecodeStsz - decodes
-func DecodeStsz(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeStsz(r io.Reader, size uint64) (Box, error) {
 	data, err := read(r, size)
 
 	if err != nil {

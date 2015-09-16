@@ -11,7 +11,7 @@ type UdtaBox struct {
 	Chpl *ChplBox
 }
 
-func DecodeUdta(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeUdta(r io.Reader, size uint64) (Box, error) {
 	l, err := DecodeContainer(r, size)
 	if err != nil {
 		return nil, err

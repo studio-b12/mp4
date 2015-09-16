@@ -37,7 +37,7 @@ const (
 )
 
 // DecodeMvhd - decodes
-func DecodeMvhd(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeMvhd(r io.Reader, size uint64) (Box, error) {
 	// !TODO use size
 	var data = make([]byte, 4)
 	if _, err := r.Read(data); err != nil {

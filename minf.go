@@ -16,7 +16,7 @@ type MinfBox struct {
 	Gmhd *GmhdBox
 }
 
-func DecodeMinf(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeMinf(r io.Reader, size uint64) (Box, error) {
 	l, err := DecodeContainer(r, size)
 	if err != nil {
 		return nil, err

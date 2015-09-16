@@ -29,7 +29,7 @@ type TkhdBox struct {
 }
 
 // DecodeTkhd te
-func DecodeTkhd(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeTkhd(r io.Reader, size uint64) (Box, error) {
 	// !TODO use size to determine version
 	data, err := read(r, size)
 	if err != nil {

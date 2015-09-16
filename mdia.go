@@ -15,7 +15,7 @@ type MdiaBox struct {
 	Minf *MinfBox
 }
 
-func DecodeMdia(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeMdia(r io.Reader, size uint64) (Box, error) {
 	l, err := DecodeContainer(r, size)
 	if err != nil {
 		return nil, err

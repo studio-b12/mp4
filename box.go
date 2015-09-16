@@ -67,10 +67,10 @@ type Box interface {
 	Encode(w io.Writer) error
 }
 
-type boxDecoder func(r io.ReadSeeker, size uint64) (Box, error)
+type boxDecoder func(r io.Reader, size uint64) (Box, error)
 
 // DecodeBox decodes a box
-func DecodeBox(h BoxHeader, r io.ReadSeeker) (Box, error) {
+func DecodeBox(h BoxHeader, r io.Reader) (Box, error) {
 	d := decoders[h.Type]
 	if d == nil {
 		d = DecodeUni(h).Decode
@@ -83,7 +83,7 @@ func DecodeBox(h BoxHeader, r io.ReadSeeker) (Box, error) {
 }
 
 // DecodeContainer decodes a container box
-func DecodeContainer(r io.ReadSeeker, size uint64) ([]Box, error) {
+func DecodeContainer(r io.Reader, size uint64) ([]Box, error) {
 	l := []Box{}
 	for {
 		h, err := DecodeHeader(r)
@@ -149,10 +149,10 @@ func makebuf(b Box) []byte {
 
 func read(r io.Reader, size uint64) ([]byte, error) {
 	var buf = make([]byte, size)
-	if readSize, err := r.Read(buf); err != nil && err != io.EOF {
+	if readSize, err := io.ReadFull(r, buf); err != nil && err != io.EOF {
 		return nil, err
 	} else if readSize != int(size) {
-		return nil, errSmallRead
+		return nil, fmt.Errorf("read %d which is different from the expected %d", readSize, size)
 	}
 	return buf, nil
 }

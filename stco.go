@@ -23,7 +23,7 @@ type StcoBox struct {
 }
 
 // DecodeStco does what it says on the tin
-func DecodeStco(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeStco(r io.Reader, size uint64) (Box, error) {
 	data, err := read(r, size)
 
 	if err != nil {

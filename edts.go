@@ -13,7 +13,7 @@ type EdtsBox struct {
 	Elst *ElstBox
 }
 
-func DecodeEdts(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeEdts(r io.Reader, size uint64) (Box, error) {
 	l, err := DecodeContainer(r, size)
 	if err != nil {
 		return nil, err

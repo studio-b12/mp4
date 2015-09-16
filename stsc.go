@@ -26,7 +26,7 @@ type StscBox struct {
 	SampleDescriptionID []uint32
 }
 
-func DecodeStsc(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeStsc(r io.Reader, size uint64) (Box, error) {
 	data, err := read(r, size)
 
 	if err != nil {

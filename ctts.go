@@ -17,7 +17,7 @@ type CttsBox struct {
 	SampleOffset []uint32 // int32 for version 1
 }
 
-func DecodeCtts(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeCtts(r io.Reader, size uint64) (Box, error) {
 	data, err := read(r, size)
 
 	if err != nil {

@@ -15,7 +15,7 @@ type FtypBox struct {
 }
 
 // Decode decodes the ftyp box
-func DecodeFtyp(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeFtyp(r io.Reader, size uint64) (Box, error) {
 	data, err := read(r, size)
 	if err != nil {
 		return nil, err

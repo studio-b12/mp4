@@ -11,7 +11,7 @@ type TrefBox struct {
 	notDecoded []byte
 }
 
-func DecodeTref(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeTref(r io.Reader, size uint64) (Box, error) {
 	data, err := read(r, size)
 	if err != nil {
 		return nil, err

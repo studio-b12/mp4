@@ -21,7 +21,7 @@ type StblBox struct {
 }
 
 // DecodeStbl decodes stbl
-func DecodeStbl(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeStbl(r io.Reader, size uint64) (Box, error) {
 	l, err := DecodeContainer(r, size)
 	if err != nil {
 		return nil, err

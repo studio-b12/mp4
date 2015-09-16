@@ -19,7 +19,7 @@ type StssBox struct {
 	SampleNumber []uint32
 }
 
-func DecodeStss(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeStss(r io.Reader, size uint64) (Box, error) {
 	data, err := read(r, size)
 
 	if err != nil {

@@ -17,7 +17,7 @@ type StsdBox struct {
 	notDecoded []byte
 }
 
-func DecodeStsd(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeStsd(r io.Reader, size uint64) (Box, error) {
 	data, err := read(r, size)
 	if err != nil {
 		return nil, err

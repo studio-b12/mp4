@@ -26,7 +26,7 @@ type MdhdBox struct {
 }
 
 // DecodeMdhd decodes mdhd
-func DecodeMdhd(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeMdhd(r io.Reader, size uint64) (Box, error) {
 	data, err := read(r, size)
 	if err != nil {
 		return nil, err

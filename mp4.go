@@ -3,6 +3,7 @@ package mp4
 import (
 	"io"
 	"math"
+	"os"
 	"strconv"
 	"time"
 )
@@ -60,7 +61,7 @@ func Decode(r io.ReadSeeker) (*MP4, error) {
 			}
 			v.Mdat.Offset = offset + HeaderSizeFor(v.Mdat.ContentSize)
 			if v.Moov == nil { // keep looking
-				r.Seek(int64(v.Mdat.ContentSize), 1)
+				r.Seek(int64(v.Mdat.ContentSize), os.SEEK_CUR)
 			} else { // we are done
 				return v, nil
 			}

@@ -11,7 +11,7 @@ type FreeBox struct {
 	notDecoded []byte
 }
 
-func DecodeFree(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeFree(r io.Reader, size uint64) (Box, error) {
 	// !TODO check is seek is enough
 	data, err := read(r, size)
 	if err != nil {

@@ -15,7 +15,7 @@ type TrakBox struct {
 	Tref *TrefBox
 }
 
-func DecodeTrak(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeTrak(r io.Reader, size uint64) (Box, error) {
 	l, err := DecodeContainer(r, size)
 	if err != nil {
 		return nil, err

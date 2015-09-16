@@ -11,7 +11,7 @@ type NameBox struct {
 	notDecoded []byte
 }
 
-func DecodeName(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeName(r io.Reader, size uint64) (Box, error) {
 	data, err := read(r, size)
 	if err != nil {
 		return nil, err

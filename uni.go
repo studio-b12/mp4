@@ -21,7 +21,7 @@ func DecodeUni(header BoxHeader) *UniBox {
 }
 
 // Decode decodes a uni
-func (u *UniBox) Decode(r io.ReadSeeker, size uint64) (Box, error) {
+func (u *UniBox) Decode(r io.Reader, size uint64) (Box, error) {
 	u.buff = make([]byte, size)
 	if err := binary.Read(r, binary.BigEndian, u.buff); err != nil {
 		return nil, err

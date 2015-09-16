@@ -21,7 +21,7 @@ type Co64Box struct {
 }
 
 // DecodeCo64 does what it says on the tin
-func DecodeCo64(r io.ReadSeeker, size uint64) (Box, error) {
+func DecodeCo64(r io.Reader, size uint64) (Box, error) {
 	data, err := read(r, size)
 	if err != nil {
 		return nil, err
