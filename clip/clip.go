@@ -57,7 +57,7 @@ type clipFilter struct {
 	chunks []chunk
 
 	m           *mp4.MP4
-	rangeReader RangeReader
+	rangeReader mp4.RangeReader
 
 	begin time.Duration
 }
@@ -69,14 +69,9 @@ type Clip interface {
 	Size() uint64
 }
 
-// RangeReader can be used to get ReadClose for a given range
-type RangeReader interface {
-	RangeRead(start, length uint64) (io.ReadCloser, error)
-}
-
 // New returns a filter that extracts a clip between begin and begin + duration (in seconds, starting at 0)
 // Il will try to include a key frame at the beginning, and keeps the same chunks as the origin media
-func New(m *mp4.MP4, begin time.Duration, rr RangeReader) (Clip, error) {
+func New(m *mp4.MP4, begin time.Duration, rr mp4.RangeReader) (Clip, error) {
 	if begin < 0 {
 		return nil, ErrClipOutside
 	}

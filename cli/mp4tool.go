@@ -23,9 +23,8 @@ func main() {
 	cmd.Command("info", "Displays information about a media", func(cmd *cli.Cmd) {
 		file := cmd.StringArg("FILE", "", "the file to display")
 		cmd.Action = func() {
-			fd, err := os.Open(*file)
-			defer fd.Close()
-			v, err := mp4.Decode(fd)
+			rr := &fileRangeReader{fileName: *file}
+			v, err := mp4.Decode(rr)
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -38,13 +37,8 @@ func main() {
 		src := cmd.StringArg("SRC", "", "the source file name")
 		dst := cmd.StringArg("DST", "", "the destination file name")
 		cmd.Action = func() {
-			in, err := os.Open(*src)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-			defer in.Close()
-			v, err := mp4.Decode(in)
+			rr := &fileRangeReader{fileName: *src}
+			v, err := mp4.Decode(rr)
 			if err != nil {
 				fmt.Println(err)
 				return
@@ -55,7 +49,6 @@ func main() {
 				return
 			}
 			defer out.Close()
-			rr := &fileRangeReader{fileName: *src}
 			clip, err := clip.New(v, time.Duration(*start)*time.Second, rr)
 			if err != nil {
 				fmt.Println(err)
@@ -74,12 +67,8 @@ func main() {
 		src := cmd.StringArg("SRC", "", "the source file name")
 		dst := cmd.StringArg("DST", "", "the destination file name")
 		cmd.Action = func() {
-			in, err := os.Open(*src)
-			if err != nil {
-				fmt.Println(err)
-			}
-			defer in.Close()
-			v, err := mp4.Decode(in)
+			rr := &fileRangeReader{fileName: *src}
+			v, err := mp4.Decode(rr)
 			if err != nil {
 				fmt.Println(err)
 			}

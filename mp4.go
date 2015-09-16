@@ -3,12 +3,11 @@ package mp4
 import (
 	"io"
 	"math"
-	"os"
 	"strconv"
 	"time"
 )
 
-// A MPEG-4 media
+// MP4 -A MPEG-4 media
 //
 // A MPEG-4 media contains three main boxes :
 //
@@ -24,21 +23,52 @@ type MP4 struct {
 	boxes []Box
 }
 
+const firstRequestSize = 4096
+
 // Decode decodes a media from a ReadSeeker
-func Decode(r io.ReadSeeker) (*MP4, error) {
-	v := &MP4{
-		boxes: []Box{},
+func Decode(rr RangeReader) (*MP4, error) {
+	v := &MP4{}
+	var in, err = rr.RangeRead(0, firstRequestSize)
+	if err != nil {
+		return nil, err
 	}
+	var currentOffset uint64
+	var leftFromCurrentRequest uint64 = firstRequestSize
+
 	for {
-		h, err := DecodeHeader(r)
+		h, err := DecodeHeader(in)
 		if err != nil {
 			if err == io.EOF {
 				return v, nil
-
 			}
 			return nil, err
 		}
-		box, err := DecodeBox(h, r)
+		if h.Type == "mdat" { // don't decode that now
+			v.Mdat = &MdatBox{Offset: currentOffset, ContentSize: RemoveHeaderSize(h.Size)}
+			if v.Moov != nil { // done
+				return v, nil
+			}
+			in.Close() // we don't need that
+
+			currentOffset += h.Size // go after the mdat
+			in, err = rr.RangeRead(currentOffset, firstRequestSize)
+			if err != nil {
+				return nil, err
+			}
+			leftFromCurrentRequest = firstRequestSize
+			continue
+		}
+		requiredFromRequest := (h.Size + HeaderSizeFor(h.Size))
+		if requiredFromRequest > leftFromCurrentRequest {
+			var start, length = currentOffset + leftFromCurrentRequest, requiredFromRequest - leftFromCurrentRequest + firstRequestSize
+			leftFromCurrentRequest += length
+			nextIn, err := rr.RangeRead(start, length)
+			if err != nil {
+				return nil, err
+			}
+			in = newMultiReadCloser(in, nextIn)
+		}
+		box, err := DecodeBox(h, in)
 		if err != nil {
 			return nil, err
 		}
@@ -47,30 +77,12 @@ func Decode(r io.ReadSeeker) (*MP4, error) {
 			v.Ftyp = box.(*FtypBox)
 		case "moov":
 			v.Moov = box.(*MoovBox)
-		case "mdat":
-			v.Mdat = box.(*MdatBox)
-			var offset uint64 = 0
-			for _, box := range v.boxes {
-				offset += AddHeaderSize(box.Size())
-			}
-			if v.Ftyp != nil {
-				offset += AddHeaderSize(v.Ftyp.Size())
-			}
-			if v.Moov != nil {
-				offset += AddHeaderSize(v.Moov.Size())
-			}
-			v.Mdat.Offset = offset + HeaderSizeFor(v.Mdat.ContentSize)
-			if v.Moov == nil { // keep looking
-				r.Seek(int64(v.Mdat.ContentSize), os.SEEK_CUR)
-			} else { // we are done
-				return v, nil
-			}
-
 		default:
 			v.boxes = append(v.boxes, box)
 		}
+		leftFromCurrentRequest -= h.Size
+		currentOffset += h.Size
 	}
-	return v, nil
 }
 
 // Dump displays some information about a media
@@ -107,6 +119,7 @@ func (m *MP4) Encode(w io.Writer) error {
 	return nil
 }
 
+// Size returns the size of the MP4
 func (m *MP4) Size() (size uint64) {
 	size += AddHeaderSize(m.Ftyp.Size())
 	size += AddHeaderSize(m.Moov.Size())
@@ -119,10 +132,12 @@ func (m *MP4) Size() (size uint64) {
 	return
 }
 
+// Duration calculates the duration of the media from the mvhd box
 func (m *MP4) Duration() time.Duration {
 	return time.Second * time.Duration(m.Moov.Mvhd.Duration) / time.Duration(m.Moov.Mvhd.Timescale)
 }
 
+// VideoDimensions returns the dimesnions of the first video trak
 func (m *MP4) VideoDimensions() (int, int) {
 	for _, trak := range m.Moov.Trak {
 		h, _ := strconv.ParseFloat(trak.Tkhd.Height.String(), 64)
@@ -134,6 +149,7 @@ func (m *MP4) VideoDimensions() (int, int) {
 	return 0, 0
 }
 
+// AudioVolume returns the audio volume of the first audio trak
 func (m *MP4) AudioVolume() float64 {
 	for _, trak := range m.Moov.Trak {
 		vol, _ := strconv.ParseFloat(trak.Tkhd.Volume.String(), 64)
