@@ -41,14 +41,15 @@ func (m *multiReadCloser) Read(p []byte) (int, error) {
 func (m *multiReadCloser) Close() error {
 	var err error
 	for _, reader := range m.readers {
-		err = appendError(err, reader.Close())
+		err = AppendError(err, reader.Close())
 	}
 	m.readers = nil
 
 	return err
 }
 
-func appendError(err1 error, err2 error) error {
+// AppendError appends one error to the other and doing the right thing if one or more of them are nil
+func AppendError(err1 error, err2 error) error {
 	if err2 == nil {
 		return err1
 	}

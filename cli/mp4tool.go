@@ -48,7 +48,7 @@ func main() {
 				fmt.Println(err)
 				return
 			}
-			defer out.Close()
+			defer closeWithPrintingError(out, "error on closing output file")
 			clip, err := clip.New(v, time.Duration(*start)*time.Second, rr)
 			if err != nil {
 				fmt.Println(err)
@@ -71,16 +71,22 @@ func main() {
 			v, err := mp4.Decode(rr)
 			if err != nil {
 				fmt.Println(err)
+				return
 			}
 			out, err := os.Create(*dst)
 			if err != nil {
 				fmt.Println(err)
+				return
 			}
-			defer out.Close()
-			v.Encode(out)
+			defer closeWithPrintingError(out, "error on closing output file")
+			if err := v.Encode(out); err != nil {
+				fmt.Println("error on encoding", err)
+			}
 		}
 	})
-	cmd.Run(os.Args)
+	if err := cmd.Run(os.Args); err != nil {
+		fmt.Println("error form cmd.Run", err)
+	}
 	fmt.Println("press return to exit the program")
 	fmt.Scanln()
 }
@@ -94,7 +100,9 @@ func (frr *fileRangeReader) RangeRead(start, length uint64) (io.ReadCloser, erro
 	if err != nil {
 		return nil, err
 	}
-	file.Seek(int64(start), os.SEEK_SET)
+	if _, err := file.Seek(int64(start), os.SEEK_SET); err != nil {
+		return nil, err
+	}
 	r := &readCloser{Reader: io.LimitReader(file, int64(length)), closeFunc: file.Close}
 	return r, nil
 }
@@ -106,4 +114,11 @@ type readCloser struct {
 
 func (r *readCloser) Close() error {
 	return r.closeFunc()
+}
+
+// close the closer and if it returns error print it preceded by the message
+func closeWithPrintingError(closer io.Closer, message string) {
+	if err := closer.Close(); err != nil {
+		fmt.Println(message, err)
+	}
 }

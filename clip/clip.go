@@ -126,7 +126,9 @@ func New(m *mp4.MP4, begin time.Duration, rr mp4.RangeReader) (Clip, error) {
 		}
 	}
 
-	mp4.EncodeHeader(f.m.Mdat, Buffer)
+	if err := mp4.EncodeHeader(f.m.Mdat, Buffer); err != nil {
+		return nil, err
+	}
 
 	f.buffer = Buffer.Bytes()
 	f.bufferLength = len(f.buffer)
@@ -193,8 +195,8 @@ func (f *clipFilter) WriteTo(w io.Writer) (n int64, err error) {
 		nnn, err = io.Copy(w, readCloser)
 		n += nnn
 		if err != nil {
-			readCloser.Close()
-			return
+			err2 := readCloser.Close()
+			return n, mp4.AppendError(err, err2)
 		}
 
 		if uint64(nnn) != c.size {

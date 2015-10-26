@@ -48,7 +48,9 @@ func Decode(rr RangeReader) (*MP4, error) {
 			if v.Moov != nil { // done
 				return v, nil
 			}
-			in.Close() // we don't need that
+			if err := in.Close(); err != nil { // we don't need that
+				return nil, err
+			}
 
 			currentOffset += h.Size // go after the mdat
 			in, err = rr.RangeRead(currentOffset, firstRequestSize)
