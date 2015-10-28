@@ -22,7 +22,10 @@ func DecodeDinf(r io.Reader, size uint64) (Box, error) {
 		case "dref":
 			d.Dref = b.(*DrefBox)
 		default:
-			return nil, ErrBadFormat
+			return nil, &BadFormatErr{
+				enclosingBox:  "dinf",
+				unexpectedBox: b.Type(),
+			}
 		}
 	}
 	return d, nil

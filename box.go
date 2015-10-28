@@ -12,10 +12,19 @@ var (
 	ErrUnknownBoxType = errors.New("unknown box type")
 	// ErrTruncatedHeader is when a head gets truncated
 	ErrTruncatedHeader = errors.New("truncated header")
-	// ErrBadFormat is for bad format
-	ErrBadFormat = errors.New("bad format")
-	errSmallRead = errors.New("read less than expected")
+	errSmallRead       = errors.New("read less than expected")
 )
+
+// BadFormatErr is type of error when an unexpected box appears in unexpected places
+type BadFormatErr struct {
+	enclosingBox, unexpectedBox string
+}
+
+func (b *BadFormatErr) Error() string {
+	return fmt.Sprintf("Bad format: unexpected %s box inside box %s",
+		b.unexpectedBox, b.enclosingBox)
+
+}
 
 var decoders map[string]boxDecoder
 

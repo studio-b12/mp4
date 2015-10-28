@@ -30,7 +30,10 @@ func DecodeMdia(r io.Reader, size uint64) (Box, error) {
 		case "minf":
 			m.Minf = b.(*MinfBox)
 		default:
-			return nil, ErrBadFormat
+			return nil, &BadFormatErr{
+				enclosingBox:  "mdia",
+				unexpectedBox: b.Type(),
+			}
 		}
 	}
 	return m, nil

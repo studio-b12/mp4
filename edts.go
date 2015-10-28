@@ -24,7 +24,10 @@ func DecodeEdts(r io.Reader, size uint64) (Box, error) {
 		case "elst":
 			e.Elst = b.(*ElstBox)
 		default:
-			return nil, ErrBadFormat
+			return nil, &BadFormatErr{
+				enclosingBox:  "edts",
+				unexpectedBox: b.Type(),
+			}
 		}
 	}
 	return e, nil

@@ -34,7 +34,10 @@ func DecodeTrak(r io.Reader, size uint64) (Box, error) {
 		case "tref":
 			t.Tref = b.(*TrefBox)
 		default:
-			return nil, ErrBadFormat
+			return nil, &BadFormatErr{
+				enclosingBox:  "trak",
+				unexpectedBox: b.Type(),
+			}
 		}
 	}
 	return t, nil

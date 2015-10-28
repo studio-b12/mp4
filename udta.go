@@ -26,7 +26,10 @@ func DecodeUdta(r io.Reader, size uint64) (Box, error) {
 		case "chpl":
 			u.Chpl = b.(*ChplBox)
 		default:
-			return nil, ErrBadFormat
+			return nil, &BadFormatErr{
+				enclosingBox:  "udta",
+				unexpectedBox: b.Type(),
+			}
 		}
 	}
 	return u, nil
