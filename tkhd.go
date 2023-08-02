@@ -45,7 +45,7 @@ func DecodeTkhd(r io.Reader, size uint64) (Box, error) {
 		tkhd.ModificationTime = binary.BigEndian.Uint64(data[12:20])
 		tkhd.TrackID = binary.BigEndian.Uint32(data[20:24])
 		// uint32 reserved
-		tkhd.Duration = binary.BigEndian.Uint64(data[32:36])
+		tkhd.Duration = uint64(binary.BigEndian.Uint32(data[32:36]))
 		offset = 36
 	} else {
 		tkhd.CreationTime = uint64(binary.BigEndian.Uint32(data[4:8]))
